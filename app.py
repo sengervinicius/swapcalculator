@@ -285,9 +285,7 @@ def calculate_hedged_return(request: CIPCalculationRequest):
     ]
     
     warnings = [
-        "⚠️ Mock data for testing",
-        "✓ CIP-based hedged conversion applied",
-        "Basis adjustment: 0 bp (not included)"
+        "✓ CIP-based hedged conversion applied"
     ]
     
     return CIPCalculationResponse(
