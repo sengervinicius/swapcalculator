@@ -90,15 +90,15 @@ INDEXERS_BY_CCY = {
         {'key': 'ipca', 'label': 'IPCA (Brazil)', 'value': 4.26}
     ],
     'USD': [
-        {'key': 'fed-funds', 'label': 'Fed Funds Rate', 'value': 4.50},
-        {'key': 'sofr', 'label': 'SOFR (USD)', 'value': 5.31},
+        {'key': 'fed-funds', 'label': 'Fed Funds Rate', 'value': 3.75},
+        {'key': 'sofr', 'label': 'SOFR (USD)', 'value': 3.65},
         {'key': 'bond-10yr', 'label': '10Y US Treasury', 'value': 4.25}
     ],
     'EUR': [
-        {'key': 'euribor', 'label': 'EURIBOR 12M', 'value': 4.00}
+        {'key': 'euribor', 'label': 'EURIBOR 12M', 'value': 2.50}
     ],
     'GBP': [
-        {'key': 'gbp-sonia', 'label': 'GBP SONIA', 'value': 5.25}
+        {'key': 'gbp-sonia', 'label': 'GBP SONIA', 'value': 4.9}
     ]
 }
 
