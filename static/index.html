@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hedged Return Converter - CIP Calculator</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 2em;
+            margin-bottom: 5px;
+        }
+        
+        .header p {
+            opacity: 0.9;
+            font-size: 0.95em;
+        }
+        
+        .content {
+            padding: 30px;
+        }
+        
+        .form-section {
+            margin-bottom: 25px;
+        }
+        
+        .form-section h3 {
+            font-size: 1.2em;
+            margin-bottom: 15px;
+            color: #333;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #667eea;
+        }
+        
+        .form-group {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 15px;
+        }
+        
+        .form-group.full {
+            grid-template-columns: 1fr;
+        }
+        
+        label {
+            display: block;
+            font-weight: 600;
+            color: #555;
+            margin-bottom: 8px;
+            font-size: 0.95em;
+        }
+        
+        input, select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 1em;
+            transition: border-color 0.3s;
+        }
+        
+        input:focus, select:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+        
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 14px 40px;
+            border: none;
+            border-radius: 6px;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            width: 100%;
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+        
+        button:active {
+            transform: translateY(0);
+        }
+        
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        
+        .loading {
+            display: inline-block;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .results {
+            margin-top: 30px;
+            display: none;
+            background: #f8f9ff;
+            padding: 25px;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+        
+        .results.show {
+            display: block;
+        }
+        
+        .results h3 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 1.3em;
+        }
+        
+        .result-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .result-grid.full {
+            grid-template-columns: 1fr;
+        }
+        
+        .result-item {
+            background: white;
+            padding: 15px;
+            border-radius: 6px;
+            border: 1px solid #ddd;
+        }
+        
+        .result-item label {
+            font-size: 0.85em;
+            color: #999;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 5px;
+        }
+        
+        .result-item .value {
+            font-size: 1.5em;
+            font-weight: 700;
+            color: #667eea;
+        }
+        
+        .result-item .unit {
+            font-size: 0.85em;
+            color: #999;
+            margin-left: 5px;
+        }
+        
+        .assumptions {
+            margin-top: 20px;
+            background: white;
+            padding: 15px;
+            border-radius: 6px;
+        }
+        
+        .assumptions h4 {
+            margin-bottom: 10px;
+            color: #333;
+            font-size: 0.95em;
+        }
+        
+        .assumption-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #eee;
+            font-size: 0.9em;
+        }
+        
+        .assumption-item:last-child {
+            border-bottom: none;
+        }
+        
+        .assumption-name {
+            color: #555;
+            font-weight: 500;
+        }
+        
+        .assumption-value {
+            color: #667eea;
+            font-weight: 600;
+        }
+        
+        .error-message {
+            display: none;
+            background: #fee;
+            color: #c33;
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            border-left: 4px solid #c33;
+        }
+        
+        .error-message.show {
+            display: block;
+        }
+        
+        .warning {
+            background: #ffeaa7;
+            color: #cc8800;
+            padding: 12px;
+            border-radius: 4px;
+            margin: 10px 0;
+            font-size: 0.9em;
+            border-left: 3px solid #cc8800;
+        }
+        
+        @media (max-width: 600px) {
+            .form-group {
+                grid-template-columns: 1fr;
+            }
+            
+            .result-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .header h1 {
+                font-size: 1.5em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>💱 Hedged Return Converter</h1>
+            <p>CIP-based hedged return calculation across currencies</p>
+        </div>
+        
+        <div class="content">
+            <div class="error-message" id="errorMessage"></div>
+            
+            <form id="calculatorForm">
+                <div class="form-section">
+                    <h3>Base Currency & Indexer</h3>
+                    <div class="form-group">
+                        <div>
+                            <label for="baseCurrency">Base Currency *</label>
+                            <select id="baseCurrency" required onchange="updateIndexers()">
+                                <option value="">Select...</option>
+                                <option value="BRL">BRL - Brazilian Real</option>
+                                <option value="USD">USD - US Dollar</option>
+                                <option value="EUR">EUR - Euro</option>
+                                <option value="GBP">GBP - British Pound</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="indexerKey">Indexer Key *</label>
+                            <select id="indexerKey" required>
+                                <option value="">Select currency first...</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="form-section">
+                    <h3>Target Currency & Parameters</h3>
+                    <div class="form-group">
+                        <div>
+                            <label for="targetCurrency">Target Currency *</label>
+                            <select id="targetCurrency" required>
+                                <option value="">Select...</option>
+                                <option value="BRL">BRL - Brazilian Real</option>
+                                <option value="USD">USD - US Dollar</option>
+                                <option value="EUR">EUR - Euro</option>
+                                <option value="GBP">GBP - British Pound</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="tenor">Tenor (years) *</label>
+                            <input type="number" id="tenor" min="0.1" max="50" step="0.1" value="1" required>
+                        </div>
+                    </div>
+                    <div class="form-group full">
+                        <div>
+                            <label for="spread">Spread (% p.a.) *</label>
+                            <input type="number" id="spread" min="0" max="100" step="0.01" value="2.5" required>
+                        </div>
+                    </div>
+                </div>
+                
+                <button type="submit" id="calculateBtn">📊 Calculate Hedged Return</button>
+            </form>
+            
+            <div class="results" id="resultsSection">
+                <h3>📈 Results</h3>
+                
+                <div class="result-grid">
+                    <div class="result-item">
+                        <label>All-In Return (Base CCY)</label>
+                        <div class="value"><span id="resultAllInBase">-</span><span class="unit">% p.a.</span></div>
+                    </div>
+                    <div class="result-item">
+                        <label>Target CCY Equivalent Return</label>
+                        <div class="value"><span id="resultUsdEquiv">-</span><span class="unit">% p.a.</span></div>
+                    </div>
+                </div>
+                
+                <div class="result-grid full">
+                    <div class="result-item">
+                        <label>Total Return Over Tenor</label>
+                        <div class="value"><span id="resultTotalReturn">-</span><span class="unit">%</span></div>
+                    </div>
+                </div>
+                
+                <div class="assumptions">
+                    <h4>📋 Key Assumptions</h4>
+                    <div id="assumptionsList"></div>
+                </div>
+                
+                <div id="warningsList"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const form = document.getElementById('calculatorForm');
+        const errorMessage = document.getElementById('errorMessage');
+        const resultsSection = document.getElementById('resultsSection');
+        const calculateBtn = document.getElementById('calculateBtn');
+        
+        const API_BASE_URL = window.location.origin + '/api';
+        
+        // Populate indexer dropdown when base currency changes
+        async function updateIndexers() {
+            const baseCurrency = document.getElementById('baseCurrency').value;
+            const indexerSelect = document.getElementById('indexerKey');
+            
+            indexerSelect.innerHTML = '<option value="">Select...</option>';
+            
+            if (!baseCurrency) return;
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/indexers/${baseCurrency}`);
+                if (!response.ok) throw new Error('Failed to fetch indexers');
+                
+                const data = await response.json();
+                data.indexers.forEach(idx => {
+                    const option = document.createElement('option');
+                    option.value = idx.key;
+                    option.textContent = `${idx.label} (${idx.value}%)`;
+                    indexerSelect.appendChild(option);
+                });
+            } catch (err) {
+                console.error('Error loading indexers:', err);
+                showError('Failed to load indexers. Please try again.');
+            }
+        }
+        
+        // Show error message
+        function showError(message) {
+            errorMessage.textContent = message;
+            errorMessage.classList.add('show');
+            resultsSection.classList.remove('show');
+        }
+        
+        // Clear error message
+        function clearError() {
+            errorMessage.classList.remove('show');
+            errorMessage.textContent = '';
+        }
+        
+        // Handle form submission
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            clearError();
+            
+            calculateBtn.disabled = true;
+            calculateBtn.innerHTML = '<span class="loading">⏳</span> Calculating...';
+            
+            const baseCurrency = document.getElementById('baseCurrency').value;
+            const indexerKey = document.getElementById('indexerKey').value;
+            const targetCurrency = document.getElementById('targetCurrency').value;
+            const tenor = parseFloat(document.getElementById('tenor').value);
+            const spread = parseFloat(document.getElementById('spread').value);
+            
+            // Validation
+            if (!baseCurrency || !indexerKey || !targetCurrency || !tenor || spread === '') {
+                showError('Please fill in all required fields');
+                calculateBtn.disabled = false;
+                calculateBtn.innerHTML = '📊 Calculate Hedged Return';
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/calculate/hedged-return`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        base_currency: baseCurrency,
+                        base_indexer_key: indexerKey,
+                        target_currency: targetCurrency,
+                        tenor: tenor,
+                        spread: spread
+                    })
+                });
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Calculation failed');
+                }
+                
+                const result = await response.json();
+                displayResults(result);
+                
+            } catch (error) {
+                console.error('Calculation error:', error);
+                showError(`Error: ${error.message}`);
+            } finally {
+                calculateBtn.disabled = false;
+                calculateBtn.innerHTML = '📊 Calculate Hedged Return';
+            }
+        });
+        
+        // Display results
+        function displayResults(data) {
+            document.getElementById('resultAllInBase').textContent = data.all_in_base_pp.toFixed(4);
+            document.getElementById('resultUsdEquiv').textContent = data.usd_equiv_pp.toFixed(4);
+            document.getElementById('resultTotalReturn').textContent = data.total_return_pp.toFixed(4);
+            
+            // Assumptions
+            const assumptionsList = document.getElementById('assumptionsList');
+            assumptionsList.innerHTML = '';
+            data.assumptions.forEach(assumption => {
+                const div = document.createElement('div');
+                div.className = 'assumption-item';
+                div.innerHTML = `
+                    <span class="assumption-name">${assumption.name}</span>
+                    <span class="assumption-value">${assumption.value_pp ? assumption.value_pp.toFixed(4) + '%' : 'N/A'}</span>
+                `;
+                assumptionsList.appendChild(div);
+            });
+            
+            // Warnings
+            const warningsList = document.getElementById('warningsList');
+            warningsList.innerHTML = '';
+            data.warnings.forEach(warning => {
+                const div = document.createElement('div');
+                div.className = 'warning';
+                div.textContent = warning;
+                warningsList.appendChild(div);
+            });
+            
+            resultsSection.classList.add('show');
+        }
+        
+        // Load indexers on page load
+        updateIndexers();
+    </script>
+</body>
+</html>
