@@ -7,32 +7,48 @@
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         
+        :root {
+            --bg: #f6f7fb;
+            --card: #ffffff;
+            --text: #0f172a;
+            --muted: #64748b;
+            --border: #e2e8f0;
+            --accent: #4f46e5;
+            --accent2: #7c3aed;
+            --shadow: 0 18px 50px rgba(2, 6, 23, 0.12);
+        }
+        
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+            background: radial-gradient(1200px 600px at 10% -10%, rgba(79, 70, 229, 0.18), transparent 60%),
+                        radial-gradient(900px 500px at 110% 0%, rgba(124, 58, 237, 0.16), transparent 55%),
+                        var(--bg);
             min-height: 100vh;
-            padding: 20px;
+            padding: 28px;
+            color: var(--text);
         }
         
         .container {
-            max-width: 900px;
+            max-width: 980px;
             margin: 0 auto;
-            background: white;
-            border-radius: 12px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            background: var(--card);
+            border-radius: 16px;
+            box-shadow: var(--shadow);
             overflow: hidden;
+            border: 1px solid rgba(226, 232, 240, 0.9);
         }
         
         .header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, var(--accent) 0%, var(--accent2) 100%);
             color: white;
-            padding: 30px;
+            padding: 28px 30px;
             text-align: center;
         }
         
         .header h1 {
-            font-size: 2em;
-            margin-bottom: 5px;
+            font-size: 1.8em;
+            margin-bottom: 6px;
+            letter-spacing: -0.02em;
         }
         
         .header p {
@@ -49,11 +65,11 @@
         }
         
         .form-section h3 {
-            font-size: 1.2em;
-            margin-bottom: 15px;
-            color: #333;
+            font-size: 1.05em;
+            margin-bottom: 14px;
+            color: var(--text);
             padding-bottom: 10px;
-            border-bottom: 2px solid #667eea;
+            border-bottom: 1px solid var(--border);
         }
         
         .form-group {
@@ -70,42 +86,43 @@
         label {
             display: block;
             font-weight: 600;
-            color: #555;
+            color: #334155;
             margin-bottom: 8px;
-            font-size: 0.95em;
+            font-size: 0.92em;
         }
         
         input, select {
             width: 100%;
-            padding: 12px;
-            border: 2px solid #ddd;
-            border-radius: 6px;
+            padding: 12px 12px;
+            border: 1px solid var(--border);
+            border-radius: 10px;
             font-size: 1em;
-            transition: border-color 0.3s;
+            transition: border-color 0.2s, box-shadow 0.2s;
+            background: white;
         }
         
         input:focus, select:focus {
             outline: none;
-            border-color: #667eea;
-            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+            border-color: rgba(79, 70, 229, 0.65);
+            box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.14);
         }
         
         button {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, var(--accent) 0%, var(--accent2) 100%);
             color: white;
             padding: 14px 40px;
             border: none;
-            border-radius: 6px;
+            border-radius: 12px;
             font-size: 1em;
-            font-weight: 600;
+            font-weight: 650;
             cursor: pointer;
-            transition: transform 0.2s, box-shadow 0.2s;
+            transition: transform 0.15s, box-shadow 0.15s;
             width: 100%;
         }
         
         button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+            transform: translateY(-1px);
+            box-shadow: 0 12px 24px rgba(79, 70, 229, 0.28);
         }
         
         button:active {
@@ -130,10 +147,10 @@
         .results {
             margin-top: 30px;
             display: none;
-            background: #f8f9ff;
-            padding: 25px;
-            border-radius: 8px;
-            border-left: 4px solid #667eea;
+            background: #f8fafc;
+            padding: 22px;
+            border-radius: 14px;
+            border: 1px solid var(--border);
         }
         
         .results.show {
@@ -141,9 +158,10 @@
         }
         
         .results h3 {
-            color: #333;
-            margin-bottom: 20px;
-            font-size: 1.3em;
+            color: var(--text);
+            margin-bottom: 18px;
+            font-size: 1.15em;
+            letter-spacing: -0.01em;
         }
         
         .result-grid {
@@ -159,23 +177,23 @@
         
         .result-item {
             background: white;
-            padding: 15px;
-            border-radius: 6px;
-            border: 1px solid #ddd;
+            padding: 16px;
+            border-radius: 12px;
+            border: 1px solid var(--border);
         }
         
         .result-item label {
-            font-size: 0.85em;
-            color: #999;
+            font-size: 0.78em;
+            color: var(--muted);
             text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin-bottom: 5px;
+            letter-spacing: 0.06em;
+            margin-bottom: 6px;
         }
         
         .result-item .value {
-            font-size: 1.5em;
-            font-weight: 700;
-            color: #667eea;
+            font-size: 1.45em;
+            font-weight: 750;
+            color: var(--accent);
         }
         
         .result-item .unit {
@@ -185,10 +203,11 @@
         }
         
         .assumptions {
-            margin-top: 20px;
+            margin-top: 18px;
             background: white;
             padding: 15px;
-            border-radius: 6px;
+            border-radius: 12px;
+            border: 1px solid var(--border);
         }
         
         .assumptions h4 {
@@ -215,7 +234,7 @@
         }
         
         .assumption-value {
-            color: #667eea;
+            color: var(--accent);
             font-weight: 600;
         }
         
@@ -234,13 +253,13 @@
         }
         
         .warning {
-            background: #ffeaa7;
-            color: #cc8800;
+            background: #fff7ed;
+            color: #9a3412;
             padding: 12px;
-            border-radius: 4px;
+            border-radius: 10px;
             margin: 10px 0;
-            font-size: 0.9em;
-            border-left: 3px solid #cc8800;
+            font-size: 0.92em;
+            border: 1px solid #fed7aa;
         }
         
         @media (max-width: 600px) {
@@ -261,8 +280,8 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>💱 Hedged Return Converter</h1>
-            <p>CIP-based hedged return calculation across currencies</p>
+            <h1>Hedged Return Converter</h1>
+            <p>CIP-based hedged return conversion across currencies</p>
         </div>
         
         <div class="content">
@@ -317,11 +336,11 @@
                     </div>
                 </div>
                 
-                <button type="submit" id="calculateBtn">📊 Calculate Hedged Return</button>
+                <button type="submit" id="calculateBtn">Calculate</button>
             </form>
             
             <div class="results" id="resultsSection">
-                <h3>📈 Results</h3>
+                <h3>Results</h3>
                 
                 <div class="result-grid">
                     <div class="result-item">
@@ -329,20 +348,22 @@
                         <div class="value"><span id="resultAllInBase">-</span><span class="unit">% p.a.</span></div>
                     </div>
                     <div class="result-item">
-                        <label>Target CCY Equivalent Return</label>
+                        <label>Hedged Return (Target CCY)</label>
                         <div class="value"><span id="resultUsdEquiv">-</span><span class="unit">% p.a.</span></div>
                     </div>
-                </div>
-                
-                <div class="result-grid full">
+
                     <div class="result-item">
-                        <label>Total Return Over Tenor</label>
-                        <div class="value"><span id="resultTotalReturn">-</span><span class="unit">%</span></div>
+                        <label>Total Return Over Tenor (Base CCY)</label>
+                        <div class="value"><span id="resultTotalReturnBase">-</span><span class="unit">%</span></div>
+                    </div>
+                    <div class="result-item">
+                        <label>Total Return Over Tenor (Target CCY)</label>
+                        <div class="value"><span id="resultTotalReturnTarget">-</span><span class="unit">%</span></div>
                     </div>
                 </div>
                 
                 <div class="assumptions">
-                    <h4>📋 Key Assumptions</h4>
+                    <h4>Key Assumptions</h4>
                     <div id="assumptionsList"></div>
                 </div>
                 
@@ -416,7 +437,7 @@
             if (!baseCurrency || !indexerKey || !targetCurrency || !tenor || spread === '') {
                 showError('Please fill in all required fields');
                 calculateBtn.disabled = false;
-                calculateBtn.innerHTML = '📊 Calculate Hedged Return';
+                calculateBtn.innerHTML = 'Calculate';
                 return;
             }
             
@@ -446,7 +467,7 @@
                 showError(`Error: ${error.message}`);
             } finally {
                 calculateBtn.disabled = false;
-                calculateBtn.innerHTML = '📊 Calculate Hedged Return';
+                calculateBtn.innerHTML = 'Calculate';
             }
         });
         
@@ -454,7 +475,11 @@
         function displayResults(data) {
             document.getElementById('resultAllInBase').textContent = data.all_in_base_pp.toFixed(4);
             document.getElementById('resultUsdEquiv').textContent = data.usd_equiv_pp.toFixed(4);
-            document.getElementById('resultTotalReturn').textContent = data.total_return_pp.toFixed(4);
+            // Total return over tenor (compounded)
+            const totalTarget = (data.total_return_target_pp ?? data.total_return_pp);
+            const totalBase = (data.total_return_base_pp ?? null);
+            document.getElementById('resultTotalReturnTarget').textContent = Number(totalTarget).toFixed(4);
+            document.getElementById('resultTotalReturnBase').textContent = totalBase === null ? '-' : Number(totalBase).toFixed(4);
             
             // Assumptions
             const assumptionsList = document.getElementById('assumptionsList');
@@ -462,9 +487,10 @@
             data.assumptions.forEach(assumption => {
                 const div = document.createElement('div');
                 div.className = 'assumption-item';
+                const hasValue = assumption.value_pp !== null && assumption.value_pp !== undefined;
                 div.innerHTML = `
                     <span class="assumption-name">${assumption.name}</span>
-                    <span class="assumption-value">${assumption.value_pp ? assumption.value_pp.toFixed(4) + '%' : 'N/A'}</span>
+                    <span class="assumption-value">${hasValue ? assumption.value_pp.toFixed(4) + '%' : 'N/A'}</span>
                 `;
                 assumptionsList.appendChild(div);
             });
