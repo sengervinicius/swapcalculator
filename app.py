@@ -65,6 +65,10 @@ class CIPCalculationResponse(BaseModel):
     risk_free_base: float
     risk_free_target: float
     usd_equiv_pp: float
+    # Compounded total returns over the tenor
+    total_return_target_pp: float
+    total_return_base_pp: float
+    # Backwards-compatible field (kept for existing frontends)
     total_return_pp: float
     assumptions: List[AssumptionItem]
     warnings: List[str]
@@ -86,19 +90,23 @@ class IndexerResponse(BaseModel):
 
 INDEXERS_BY_CCY = {
     'BRL': [
+        {'key': 'none', 'label': 'No indexer', 'value': 0.0},
         {'key': 'selic', 'label': 'SELIC (Brazil)', 'value': 15.0},
         {'key': 'ipca', 'label': 'IPCA (Brazil)', 'value': 4.26}
     ],
     'USD': [
+        {'key': 'none', 'label': 'No indexer', 'value': 0.0},
         {'key': 'fed-funds', 'label': 'Fed Funds Rate', 'value': 3.75},
         {'key': 'sofr', 'label': 'SOFR (USD)', 'value': 3.65},
         {'key': 'bond-10yr', 'label': '10Y US Treasury', 'value': 4.25}
     ],
     'EUR': [
-        {'key': 'euribor', 'label': 'EURIBOR 12M', 'value': 2.50}
+        {'key': 'none', 'label': 'No indexer', 'value': 0.0},
+        {'key': 'euribor', 'label': 'EURIBOR', 'value': 2.50}
     ],
     'GBP': [
-        {'key': 'gbp-sonia', 'label': 'GBP SONIA', 'value': 4.9}
+        {'key': 'none', 'label': 'No indexer', 'value': 0.0},
+        {'key': 'gbp-sonia', 'label': 'SONIA', 'value': 4.90}
     ]
 }
 
@@ -251,9 +259,12 @@ def calculate_hedged_return(request: CIPCalculationRequest):
     usd_equiv_decimal = (1 + all_in_base_decimal) * ((1 + i_target_decimal) / (1 + i_base_decimal)) - 1
     usd_equiv_pp = usd_equiv_decimal * 100
     
-    # Step 3: Calculate total return over tenor (compound)
-    total_return_decimal = math.pow(1 + usd_equiv_decimal, request.tenor) - 1
-    total_return_pp = total_return_decimal * 100
+    # Step 3: Calculate total return over tenor (compounded)
+    total_return_target_decimal = math.pow(1 + usd_equiv_decimal, request.tenor) - 1
+    total_return_target_pp = total_return_target_decimal * 100
+
+    total_return_base_decimal = math.pow(1 + all_in_base_decimal, request.tenor) - 1
+    total_return_base_pp = total_return_base_decimal * 100
     
     # ========== BUILD RESPONSE ==========
     
@@ -284,9 +295,14 @@ def calculate_hedged_return(request: CIPCalculationRequest):
         )
     ]
     
+    # Optional: surface a mock-data warning only when explicitly enabled.
+    show_mock_warning = os.getenv("SHOW_MOCK_WARNING", "0") == "1"
     warnings = [
-        "✓ CIP-based hedged conversion applied"
+        "✓ CIP-based hedged conversion applied",
+        "Basis adjustment: 0 bp (not included)"
     ]
+    if show_mock_warning:
+        warnings.insert(0, "⚠️ Mock data for testing")
     
     return CIPCalculationResponse(
         ccy_base=request.base_currency,
@@ -299,7 +315,10 @@ def calculate_hedged_return(request: CIPCalculationRequest):
         risk_free_base=i_base_t,
         risk_free_target=i_target_t,
         usd_equiv_pp=round(usd_equiv_pp, 4),
-        total_return_pp=round(total_return_pp, 4),
+        total_return_target_pp=round(total_return_target_pp, 4),
+        total_return_base_pp=round(total_return_base_pp, 4),
+        # Backwards-compatible alias
+        total_return_pp=round(total_return_target_pp, 4),
         assumptions=assumptions,
         warnings=warnings
     )
