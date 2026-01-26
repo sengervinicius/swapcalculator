@@ -169,6 +169,31 @@ FALLBACK_INDEXERS = {
     'GBP': [
         {'key': 'none', 'label': 'No indexer', 'value': 0.0},
         {'key': 'gbp-sonia', 'label': 'SONIA', 'value': 4.45}
+    ],
+    'CHF': [
+        {'key': 'none', 'label': 'No indexer', 'value': 0.0},
+        {'key': 'saron', 'label': 'SARON (Swiss)', 'value': 0.45},
+        {'key': 'snb-rate', 'label': 'SNB Policy Rate', 'value': 0.50}
+    ],
+    'JPY': [
+        {'key': 'none', 'label': 'No indexer', 'value': 0.0},
+        {'key': 'tonar', 'label': 'TONAR (Japan)', 'value': 0.23},
+        {'key': 'boj-rate', 'label': 'BoJ Policy Rate', 'value': 0.25}
+    ],
+    'CNY': [
+        {'key': 'none', 'label': 'No indexer', 'value': 0.0},
+        {'key': 'lpr-1y', 'label': 'LPR 1Y (China)', 'value': 3.10},
+        {'key': 'lpr-5y', 'label': 'LPR 5Y (China)', 'value': 3.60}
+    ],
+    'CAD': [
+        {'key': 'none', 'label': 'No indexer', 'value': 0.0},
+        {'key': 'corra', 'label': 'CORRA (Canada)', 'value': 3.20},
+        {'key': 'boc-rate', 'label': 'BoC Policy Rate', 'value': 3.25}
+    ],
+    'AUD': [
+        {'key': 'none', 'label': 'No indexer', 'value': 0.0},
+        {'key': 'aonia', 'label': 'AONIA (Australia)', 'value': 4.10},
+        {'key': 'rba-rate', 'label': 'RBA Cash Rate', 'value': 4.10}
     ]
 }
 
@@ -176,7 +201,12 @@ FALLBACK_RISK_FREE = {
     'BRL': {1: 15.00, 2: 14.80, 3: 14.60, 5: 14.20, 10: 13.50},
     'USD': {1: 4.35, 2: 4.20, 3: 4.10, 5: 4.00, 10: 4.60},
     'EUR': {1: 2.50, 2: 2.40, 3: 2.30, 5: 2.15, 10: 2.50},
-    'GBP': {1: 4.40, 2: 4.25, 3: 4.15, 5: 4.00, 10: 4.50}
+    'GBP': {1: 4.40, 2: 4.25, 3: 4.15, 5: 4.00, 10: 4.50},
+    'CHF': {1: 0.50, 2: 0.55, 3: 0.60, 5: 0.70, 10: 0.85},
+    'JPY': {1: 0.40, 2: 0.55, 3: 0.65, 5: 0.80, 10: 1.10},
+    'CNY': {1: 1.80, 2: 1.90, 3: 2.00, 5: 2.20, 10: 2.50},
+    'CAD': {1: 3.20, 2: 3.10, 3: 3.00, 5: 2.90, 10: 3.20},
+    'AUD': {1: 4.10, 2: 4.00, 3: 3.95, 5: 3.90, 10: 4.20}
 }
 
 # ============================================================================
@@ -447,6 +477,47 @@ async def get_live_indexers(currency: str) -> List[dict]:
             else:
                 indexers.append(FALLBACK_INDEXERS['GBP'][1])
         
+        elif currency == 'CHF':
+            # SARON from FRED: SAROISNBSW (Swiss National Bank)
+            saron = await fred_client.get_series_latest("SAROISNBSW")
+            if saron is not None:
+                indexers.append({'key': 'saron', 'label': 'SARON [Live]', 'value': round(saron, 2)})
+            else:
+                indexers.append(FALLBACK_INDEXERS['CHF'][1])
+            indexers.append(FALLBACK_INDEXERS['CHF'][2])
+        
+        elif currency == 'JPY':
+            # Japan policy rate from FRED
+            boj_rate = await fred_client.get_series_latest("IRSTCI01JPM156N")
+            if boj_rate is not None:
+                indexers.append({'key': 'tonar', 'label': 'Japan Short Rate [Live]', 'value': round(boj_rate, 2)})
+            else:
+                indexers.append(FALLBACK_INDEXERS['JPY'][1])
+            indexers.append(FALLBACK_INDEXERS['JPY'][2])
+        
+        elif currency == 'CNY':
+            # China rates - using fallback (PBOC doesn't have easy API)
+            indexers.append(FALLBACK_INDEXERS['CNY'][1])
+            indexers.append(FALLBACK_INDEXERS['CNY'][2])
+        
+        elif currency == 'CAD':
+            # Canada overnight rate from FRED
+            corra = await fred_client.get_series_latest("IRSTCI01CAM156N")
+            if corra is not None:
+                indexers.append({'key': 'corra', 'label': 'Canada Rate [Live]', 'value': round(corra, 2)})
+            else:
+                indexers.append(FALLBACK_INDEXERS['CAD'][1])
+            indexers.append(FALLBACK_INDEXERS['CAD'][2])
+        
+        elif currency == 'AUD':
+            # Australia RBA rate from FRED
+            rba_rate = await fred_client.get_series_latest("IRSTCI01AUM156N")
+            if rba_rate is not None:
+                indexers.append({'key': 'aonia', 'label': 'Australia Rate [Live]', 'value': round(rba_rate, 2)})
+            else:
+                indexers.append(FALLBACK_INDEXERS['AUD'][1])
+            indexers.append(FALLBACK_INDEXERS['AUD'][2])
+        
         else:
             return FALLBACK_INDEXERS.get(currency, [])
     
@@ -659,6 +730,143 @@ async def get_live_risk_free_curve_gbp() -> Optional[dict]:
     return None
 
 
+async def get_live_risk_free_curve_chf() -> Optional[dict]:
+    """Fetch live CHF curve from FRED"""
+    if not HTTPX_AVAILABLE or not config.FRED_API_KEY:
+        return None
+    
+    cache_key = "risk_free_curve_chf"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+    
+    try:
+        curve = {}
+        # Swiss government bond yields from FRED
+        chf_10y = await fred_client.get_series_latest("IRLTLT01CHM156N")
+        saron = await fred_client.get_series_latest("SAROISNBSW")
+        
+        if saron:
+            curve[1] = saron
+        if chf_10y:
+            curve[10] = chf_10y
+        
+        if len(curve) >= 1:
+            # Build curve from available points
+            if 1 in curve and 10 in curve:
+                curve[2] = curve[1] + (curve[10] - curve[1]) * 0.1
+                curve[5] = curve[1] + (curve[10] - curve[1]) * 0.4
+            cache.set(cache_key, curve)
+            logger.info(f"✅ CHF curve: {curve}")
+            return curve
+    except Exception as e:
+        logger.error(f"CHF curve error: {e}")
+    
+    return None
+
+
+async def get_live_risk_free_curve_jpy() -> Optional[dict]:
+    """Fetch live JPY curve from FRED"""
+    if not HTTPX_AVAILABLE or not config.FRED_API_KEY:
+        return None
+    
+    cache_key = "risk_free_curve_jpy"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+    
+    try:
+        curve = {}
+        # Japan government bond yields from FRED
+        jpy_10y = await fred_client.get_series_latest("IRLTLT01JPM156N")
+        jpy_short = await fred_client.get_series_latest("IRSTCI01JPM156N")
+        
+        if jpy_short:
+            curve[1] = jpy_short
+        if jpy_10y:
+            curve[10] = jpy_10y
+        
+        if len(curve) >= 1:
+            if 1 in curve and 10 in curve:
+                curve[2] = curve[1] + (curve[10] - curve[1]) * 0.1
+                curve[5] = curve[1] + (curve[10] - curve[1]) * 0.4
+            cache.set(cache_key, curve)
+            logger.info(f"✅ JPY curve: {curve}")
+            return curve
+    except Exception as e:
+        logger.error(f"JPY curve error: {e}")
+    
+    return None
+
+
+async def get_live_risk_free_curve_cad() -> Optional[dict]:
+    """Fetch live CAD curve from FRED"""
+    if not HTTPX_AVAILABLE or not config.FRED_API_KEY:
+        return None
+    
+    cache_key = "risk_free_curve_cad"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+    
+    try:
+        curve = {}
+        # Canada government bond yields from FRED
+        cad_10y = await fred_client.get_series_latest("IRLTLT01CAM156N")
+        cad_short = await fred_client.get_series_latest("IRSTCI01CAM156N")
+        
+        if cad_short:
+            curve[1] = cad_short
+        if cad_10y:
+            curve[10] = cad_10y
+        
+        if len(curve) >= 1:
+            if 1 in curve and 10 in curve:
+                curve[2] = curve[1] + (curve[10] - curve[1]) * 0.1
+                curve[5] = curve[1] + (curve[10] - curve[1]) * 0.4
+            cache.set(cache_key, curve)
+            logger.info(f"✅ CAD curve: {curve}")
+            return curve
+    except Exception as e:
+        logger.error(f"CAD curve error: {e}")
+    
+    return None
+
+
+async def get_live_risk_free_curve_aud() -> Optional[dict]:
+    """Fetch live AUD curve from FRED"""
+    if not HTTPX_AVAILABLE or not config.FRED_API_KEY:
+        return None
+    
+    cache_key = "risk_free_curve_aud"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+    
+    try:
+        curve = {}
+        # Australia government bond yields from FRED
+        aud_10y = await fred_client.get_series_latest("IRLTLT01AUM156N")
+        aud_short = await fred_client.get_series_latest("IRSTCI01AUM156N")
+        
+        if aud_short:
+            curve[1] = aud_short
+        if aud_10y:
+            curve[10] = aud_10y
+        
+        if len(curve) >= 1:
+            if 1 in curve and 10 in curve:
+                curve[2] = curve[1] + (curve[10] - curve[1]) * 0.1
+                curve[5] = curve[1] + (curve[10] - curve[1]) * 0.4
+            cache.set(cache_key, curve)
+            logger.info(f"✅ AUD curve: {curve}")
+            return curve
+    except Exception as e:
+        logger.error(f"AUD curve error: {e}")
+    
+    return None
+
+
 async def get_risk_free_rate(currency: str, tenor: float) -> tuple[Optional[float], str]:
     """Get risk-free rate with live data, falling back to reference curves"""
     currency = currency.upper()
@@ -676,6 +884,15 @@ async def get_risk_free_rate(currency: str, tenor: float) -> tuple[Optional[floa
             live_curve = await get_live_risk_free_curve_eur()
         elif currency == "GBP":
             live_curve = await get_live_risk_free_curve_gbp()
+        elif currency == "CHF":
+            live_curve = await get_live_risk_free_curve_chf()
+        elif currency == "JPY":
+            live_curve = await get_live_risk_free_curve_jpy()
+        elif currency == "CAD":
+            live_curve = await get_live_risk_free_curve_cad()
+        elif currency == "AUD":
+            live_curve = await get_live_risk_free_curve_aud()
+        # CNY uses fallback only (no easy public API)
         
         if live_curve:
             rate = interpolate_rate(live_curve, tenor)
@@ -726,14 +943,15 @@ def config_status():
 @app.get("/api/indexers", tags=["Reference Data"])
 async def list_all_indexers():
     result = {}
-    for ccy in ['BRL', 'USD', 'EUR', 'GBP']:
+    for ccy in ['BRL', 'USD', 'EUR', 'GBP', 'CHF', 'JPY', 'CNY', 'CAD', 'AUD']:
         result[ccy] = await get_live_indexers(ccy)
     return result
 
 @app.get("/api/indexers/{currency}", tags=["Reference Data"])
 async def get_indexers_by_currency(currency: str):
     currency = currency.upper()
-    if currency not in ['BRL', 'USD', 'EUR', 'GBP']:
+    supported = ['BRL', 'USD', 'EUR', 'GBP', 'CHF', 'JPY', 'CNY', 'CAD', 'AUD']
+    if currency not in supported:
         raise HTTPException(status_code=404, detail=f"Currency {currency} not found")
     
     indexers = await get_live_indexers(currency)
@@ -756,7 +974,8 @@ async def get_risk_free_curve(currency: str):
 async def get_yield_curve_for_chart(currency: str):
     """Get full yield curve data for charting (tenors 1-30 years)"""
     currency = currency.upper()
-    if currency not in ['BRL', 'USD', 'EUR', 'GBP']:
+    supported = ['BRL', 'USD', 'EUR', 'GBP', 'CHF', 'JPY', 'CNY', 'CAD', 'AUD']
+    if currency not in supported:
         raise HTTPException(status_code=404, detail=f"Currency {currency} not supported")
     
     # Standard tenors for the chart
@@ -775,6 +994,14 @@ async def get_yield_curve_for_chart(currency: str):
             live_curve = await get_live_risk_free_curve_eur()
         elif currency == "GBP":
             live_curve = await get_live_risk_free_curve_gbp()
+        elif currency == "CHF":
+            live_curve = await get_live_risk_free_curve_chf()
+        elif currency == "JPY":
+            live_curve = await get_live_risk_free_curve_jpy()
+        elif currency == "CAD":
+            live_curve = await get_live_risk_free_curve_cad()
+        elif currency == "AUD":
+            live_curve = await get_live_risk_free_curve_aud()
         
         if live_curve:
             source = "Live"
