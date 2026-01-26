@@ -15,6 +15,8 @@
             --border: #e2e8f0;
             --accent: #4f46e5;
             --accent2: #7c3aed;
+            --success: #10b981;
+            --warning: #f59e0b;
             --shadow: 0 18px 50px rgba(2, 6, 23, 0.12);
         }
         
@@ -54,6 +56,53 @@
         .header p {
             opacity: 0.9;
             font-size: 0.95em;
+        }
+        
+        /* Data Status Bar */
+        .data-status {
+            background: #f8fafc;
+            padding: 12px 30px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        
+        .data-status-title {
+            font-size: 0.85em;
+            color: var(--muted);
+            font-weight: 500;
+        }
+        
+        .data-sources {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+        
+        .data-source {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 0.8em;
+        }
+        
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--muted);
+        }
+        
+        .status-dot.live {
+            background: var(--success);
+            box-shadow: 0 0 6px rgba(16, 185, 129, 0.5);
+        }
+        
+        .status-dot.fallback {
+            background: var(--warning);
         }
         
         .content {
@@ -132,6 +181,7 @@
         button:disabled {
             opacity: 0.6;
             cursor: not-allowed;
+            transform: none;
         }
         
         .loading {
@@ -155,6 +205,12 @@
         
         .results.show {
             display: block;
+            animation: fadeIn 0.3s ease;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
         }
         
         .results h3 {
@@ -238,14 +294,32 @@
             font-weight: 600;
         }
         
+        .assumption-source {
+            font-size: 0.75em;
+            color: var(--muted);
+            margin-left: 8px;
+        }
+        
+        .live-badge {
+            display: inline-block;
+            background: linear-gradient(135deg, var(--success), #059669);
+            color: white;
+            font-size: 0.65em;
+            padding: 2px 6px;
+            border-radius: 4px;
+            margin-left: 6px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        
         .error-message {
             display: none;
-            background: #fee;
-            color: #c33;
+            background: #fef2f2;
+            color: #dc2626;
             padding: 15px;
-            border-radius: 6px;
+            border-radius: 10px;
             margin-bottom: 20px;
-            border-left: 4px solid #c33;
+            border-left: 4px solid #dc2626;
         }
         
         .error-message.show {
@@ -253,27 +327,52 @@
         }
         
         .warning {
-            background: #fff7ed;
-            color: #9a3412;
-            padding: 12px;
-            border-radius: 10px;
-            margin: 10px 0;
-            font-size: 0.92em;
-            border: 1px solid #fed7aa;
+            padding: 10px 14px;
+            margin-top: 12px;
+            border-radius: 8px;
+            font-size: 0.88em;
         }
         
-        @media (max-width: 600px) {
-            .form-group {
-                grid-template-columns: 1fr;
-            }
-            
-            .result-grid {
-                grid-template-columns: 1fr;
-            }
-            
-            .header h1 {
-                font-size: 1.5em;
-            }
+        .warning.info {
+            background: #f0f9ff;
+            color: #0369a1;
+            border: 1px solid #bae6fd;
+        }
+        
+        .warning.alert {
+            background: #fffbeb;
+            color: #b45309;
+            border: 1px solid #fde68a;
+        }
+        
+        @media (max-width: 640px) {
+            body { padding: 15px; }
+            .form-group { grid-template-columns: 1fr; }
+            .result-grid { grid-template-columns: 1fr; }
+            .data-sources { justify-content: center; }
+        }
+        
+        /* Designer Credit */
+        .footer {
+            text-align: center;
+            padding: 20px 30px;
+            border-top: 1px solid var(--border);
+            background: linear-gradient(180deg, transparent, rgba(79, 70, 229, 0.03));
+        }
+        
+        .footer p {
+            font-size: 0.82em;
+            color: var(--muted);
+            letter-spacing: 0.02em;
+        }
+        
+        .footer .designer {
+            color: var(--accent);
+            font-weight: 600;
+            background: linear-gradient(135deg, var(--accent), var(--accent2));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
         }
     </style>
 </head>
@@ -281,7 +380,18 @@
     <div class="container">
         <div class="header">
             <h1>Hedged Return Converter</h1>
-            <p>CIP-based hedged return conversion across currencies</p>
+            <p>CIP-Based Cross-Currency Yield Calculator</p>
+        </div>
+        
+        <!-- Data Source Status Bar -->
+        <div class="data-status">
+            <span class="data-status-title">Data Sources:</span>
+            <div class="data-sources" id="dataSourcesStatus">
+                <div class="data-source"><span class="status-dot" id="statusBRL"></span> BRL</div>
+                <div class="data-source"><span class="status-dot" id="statusUSD"></span> USD</div>
+                <div class="data-source"><span class="status-dot" id="statusEUR"></span> EUR</div>
+                <div class="data-source"><span class="status-dot" id="statusGBP"></span> GBP</div>
+            </div>
         </div>
         
         <div class="content">
@@ -370,6 +480,11 @@
                 <div id="warningsList"></div>
             </div>
         </div>
+        
+        <!-- Footer with Designer Credit -->
+        <div class="footer">
+            <p>Designed by <span class="designer">Vinicius Senger</span></p>
+        </div>
     </div>
 
     <script>
@@ -380,29 +495,61 @@
         
         const API_BASE_URL = window.location.origin + '/api';
         
+        // Check data source status on load
+        async function checkDataSources() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/config/status`);
+                if (response.ok) {
+                    const status = await response.json();
+                    
+                    // Update status dots
+                    document.getElementById('statusBRL').className = 
+                        'status-dot ' + (status.anbima_configured && status.httpx_available ? 'live' : 'fallback');
+                    document.getElementById('statusUSD').className = 
+                        'status-dot ' + (status.fred_configured && status.httpx_available ? 'live' : 'fallback');
+                    document.getElementById('statusEUR').className = 
+                        'status-dot ' + (status.httpx_available ? 'live' : 'fallback');
+                    document.getElementById('statusGBP').className = 
+                        'status-dot ' + (status.httpx_available ? 'live' : 'fallback');
+                }
+            } catch (err) {
+                console.error('Error checking data sources:', err);
+            }
+        }
+        
         // Populate indexer dropdown when base currency changes
         async function updateIndexers() {
             const baseCurrency = document.getElementById('baseCurrency').value;
             const indexerSelect = document.getElementById('indexerKey');
             
-            indexerSelect.innerHTML = '<option value="">Select...</option>';
+            indexerSelect.innerHTML = '<option value="">Loading...</option>';
             
-            if (!baseCurrency) return;
+            if (!baseCurrency) {
+                indexerSelect.innerHTML = '<option value="">Select currency first...</option>';
+                return;
+            }
             
             try {
                 const response = await fetch(`${API_BASE_URL}/indexers/${baseCurrency}`);
                 if (!response.ok) throw new Error('Failed to fetch indexers');
                 
                 const data = await response.json();
+                indexerSelect.innerHTML = '<option value="">Select...</option>';
+                
                 data.indexers.forEach(idx => {
                     const option = document.createElement('option');
                     option.value = idx.key;
+                    const isLive = idx.label.includes('[Live]');
                     option.textContent = `${idx.label} (${idx.value}%)`;
+                    if (isLive) {
+                        option.style.color = '#059669';
+                    }
                     indexerSelect.appendChild(option);
                 });
             } catch (err) {
                 console.error('Error loading indexers:', err);
                 showError('Failed to load indexers. Please try again.');
+                indexerSelect.innerHTML = '<option value="">Error loading...</option>';
             }
         }
         
@@ -475,7 +622,7 @@
         function displayResults(data) {
             document.getElementById('resultAllInBase').textContent = data.all_in_base_pp.toFixed(4);
             document.getElementById('resultUsdEquiv').textContent = data.usd_equiv_pp.toFixed(4);
-            // Total return over tenor (compounded)
+            
             const totalTarget = (data.total_return_target_pp ?? data.total_return_pp);
             const totalBase = (data.total_return_base_pp ?? null);
             document.getElementById('resultTotalReturnTarget').textContent = Number(totalTarget).toFixed(4);
@@ -488,9 +635,16 @@
                 const div = document.createElement('div');
                 div.className = 'assumption-item';
                 const hasValue = assumption.value_pp !== null && assumption.value_pp !== undefined;
+                const isLive = assumption.source_name && assumption.source_name.includes('Live');
                 div.innerHTML = `
-                    <span class="assumption-name">${assumption.name}</span>
-                    <span class="assumption-value">${hasValue ? assumption.value_pp.toFixed(4) + '%' : 'N/A'}</span>
+                    <span class="assumption-name">
+                        ${assumption.name}
+                        ${isLive ? '<span class="live-badge">Live</span>' : ''}
+                    </span>
+                    <span>
+                        <span class="assumption-value">${hasValue ? assumption.value_pp.toFixed(4) + '%' : 'N/A'}</span>
+                        <span class="assumption-source">${assumption.source_name || ''}</span>
+                    </span>
                 `;
                 assumptionsList.appendChild(div);
             });
@@ -500,7 +654,7 @@
             warningsList.innerHTML = '';
             data.warnings.forEach(warning => {
                 const div = document.createElement('div');
-                div.className = 'warning';
+                div.className = 'warning ' + (warning.includes('⚠️') ? 'alert' : 'info');
                 div.textContent = warning;
                 warningsList.appendChild(div);
             });
@@ -508,7 +662,8 @@
             resultsSection.classList.add('show');
         }
         
-        // Load indexers on page load
+        // Initialize on page load
+        checkDataSources();
         updateIndexers();
     </script>
 </body>
