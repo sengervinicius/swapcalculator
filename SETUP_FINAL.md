@@ -1,4 +1,4 @@
-# 🚀 SETUP INSTRUCTIONS
+🚀 SETUP INSTRUCTIONS
 
 ## Quick Start
 
