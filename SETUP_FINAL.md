@@ -1,137 +1,119 @@
-# 🚀 SETUP INSTRUCTIONS - COMPLETE WORKING VERSION
+# 🚀 SETUP INSTRUCTIONS
 
-## The Problem With Your Current Setup
+## Quick Start
 
-Your current files have these issues:
-1. ❌ `app.py` is incomplete (calculation function is cut off)
-2. ❌ `requirements.txt` has `starlette==0.37.0` (conflicts with FastAPI)
-3. ❌ HTML file is named wrong and not in the right location
-4. ❌ Missing proper frontend-backend connection
-
----
-
-## Solution: 3 Files To Replace
-
-### FILE 1: `requirements.txt` (REPLACE)
-```
-fastapi==0.115.0
-uvicorn==0.30.0
-pydantic==2.9.2
-python-multipart==0.0.6
-starlette==0.37.2
+### 1. Install the new dependency
+```bash
+pip install httpx==0.27.0
 ```
 
-### FILE 2: `app.py` (REPLACE)
-Use the file: **`app_complete_working.py`** - this is the complete, working backend
-- Copy all content from `app_complete_working.py`
-- Paste into your `app.py`
-- This includes the complete CIP calculation logic
-
-### FILE 3: `static/index.html` (REPLACE/CREATE)
-Use the file: **`index_working.html`** - this is the working frontend
-- Create a folder called `static` in your project folder if it doesn't exist
-- Rename `index_working.html` to just `index.html`
-- Move it into the `static` folder
-
----
-
-## Folder Structure (MUST BE THIS WAY)
-
-```
-Hedge Software/                    ← Your main folder
-│
-├── app.py                         ← Complete working backend
-├── requirements.txt               ← Updated dependencies
-├── launcher.bat                   ← Your launcher
-│
-└── static/                        ← NEW FOLDER (create this if missing)
-    └── index.html                 ← Working frontend (renamed from index_working.html)
+Or install everything fresh:
+```bash
+pip install -r requirements.txt
 ```
 
----
+### 2. Replace your files
 
-## Step-By-Step
+Your folder should look like this:
+```
+Hedge Software/
+├── app.py              ← Replace with new app.py
+├── requirements.txt    ← Replace with new requirements.txt
+├── launcher.bat        ← Keep as is
+└── static/
+    └── index.html      ← Replace with new index.html
+```
 
-1. **Delete or backup** your old files:
-   - Delete old `app.py`
-   - Delete old `requirements.txt`
-   - Delete old `Hedged-Return-Converter.html`
+### 3. Start the server
+```bash
+python app.py
+```
 
-2. **Create the new files:**
-   - Copy content from `app_complete_working.py` → save as `app.py`
-   - Copy content from `requirements.txt` (above) → save as `requirements.txt`
-
-3. **Create the `static` folder:**
-   - In your project folder, create a NEW folder called `static`
-   - Copy content from `index_working.html` into it
-   - Save as `index.html` (in the `static` folder)
-
-4. **Install dependencies:**
-   ```
-   pip install -r requirements.txt
-   ```
-
-5. **Start the server:**
-   ```
-   python app.py
-   ```
-
-6. **Open browser:**
-   - Go to: `http://localhost:8000`
-   - ✅ You should see the calculator interface
+### 4. Open your browser
+Go to: http://localhost:8000
 
 ---
 
-## What's Different In The New Version
+## What's New
 
-✅ **Backend (`app_complete_working.py`):**
-- Complete CIP calculation (no truncation)
-- Proper error handling
-- All endpoints working
-- Rounded results to 4 decimal places
-- Clean, documented code
+### ✅ Live Data Integration
+- **BRL**: ANBIMA API (your credentials are already built-in!)
+- **USD**: FRED API (optional - see below)
+- **EUR**: ECB API (no key needed)
+- **GBP**: Bank of England API (no key needed)
 
-✅ **Frontend (`index_working.html`):**
-- Beautiful purple gradient design
-- Form validation
-- Dynamic indexer selection
-- Shows all assumptions used
-- Real-time error messages
-- Responsive design (works on mobile)
+### ✅ Status Indicators
+The top bar shows colored dots:
+- 🟢 Green = Live data connected
+- 🟡 Yellow = Using fallback data
 
-✅ **Dependencies (`requirements.txt`):**
-- Compatible with Python 3.13
-- Correct versions (no conflicts)
-- Only 5 packages
+### ✅ Live Badges
+When data comes from live APIs, you'll see a green "LIVE" badge next to it.
 
 ---
 
-## Testing The Calculation
+## Optional: Get FRED API Key (Free)
 
-Once running, test with:
-- **Base Currency:** BRL
-- **Indexer:** SELIC
-- **Target Currency:** USD
-- **Tenor:** 1 year
-- **Spread:** 2.5% p.a.
+To get live US data (Fed Funds, SOFR, Treasury yields):
 
-You should get results showing all returns calculated via CIP formula.
+1. Go to: https://fred.stlouisfed.org/docs/api/api_key.html
+2. Click "Request API Key"
+3. Create an account (takes 2 minutes)
+4. Copy your 32-character key
+
+Then set it before running:
+```bash
+# Windows
+set FRED_API_KEY=your_key_here
+python app.py
+
+# Mac/Linux
+export FRED_API_KEY=your_key_here
+python app.py
+```
+
+Or add it directly to `app.py` line 62:
+```python
+FRED_API_KEY = os.getenv("FRED_API_KEY", "your_key_here")
+```
 
 ---
 
-## If It Still Doesn't Work
+## Your ANBIMA Credentials
 
-1. Check the black console window for error messages
-2. Copy the exact error text
-3. Share it with me - we'll fix it
+Already configured in app.py:
+- Client ID: UTZ0M5ZlzVjS
+- Client Secret: Ivydwruxb0B3
 
-The new code is production-ready and tested. If there are issues, they're usually:
-- Wrong folder structure
-- File in wrong location
-- Dependencies not installed properly
-
-**Make sure `static/index.html` exists - this is critical!**
+The app will automatically authenticate and fetch live SELIC and DI curve data!
 
 ---
 
-Good luck! This version will work. 🚀
+## Troubleshooting
+
+### "httpx not installed" message
+Run: `pip install httpx==0.27.0`
+
+### APIs not connecting
+- Check your internet connection
+- The app will use fallback data if APIs are unavailable
+- Look at the console for ✅ or ❌ messages
+
+### "Frontend not found"
+Make sure you have:
+- A folder called `static` in the same directory as `app.py`
+- A file called `index.html` inside that `static` folder
+
+---
+
+## Testing
+
+1. Select **BRL** as base currency
+2. Select **SELIC** as indexer
+3. You should see "[Live]" in the dropdown if ANBIMA is connected
+4. Select **USD** as target currency
+5. Click Calculate
+6. Check the results - assumptions will show "Live API" sources
+
+Enjoy! 🎉
+
