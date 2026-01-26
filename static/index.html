@@ -7,6 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
         
@@ -23,8 +24,11 @@
             --text-muted: #71717a;
             --green: #22c55e;
             --green-dim: #16a34a;
+            --green-light: #4ade80;
             --green-glow: rgba(34, 197, 94, 0.15);
             --green-subtle: rgba(34, 197, 94, 0.08);
+            --teal: #14b8a6;
+            --emerald: #10b981;
             --red: #ef4444;
             --yellow: #eab308;
             --blue: #3b82f6;
@@ -39,14 +43,10 @@
             line-height: 1.5;
         }
         
-        /* Subtle grid pattern background */
         body::before {
             content: '';
             position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
+            top: 0; left: 0; right: 0; bottom: 0;
             background-image: 
                 linear-gradient(rgba(34, 197, 94, 0.03) 1px, transparent 1px),
                 linear-gradient(90deg, rgba(34, 197, 94, 0.03) 1px, transparent 1px);
@@ -98,7 +98,6 @@
             font-size: 1.4rem;
             font-weight: 600;
             letter-spacing: -0.02em;
-            color: var(--text-primary);
         }
         
         .brand-text .tagline {
@@ -190,13 +189,8 @@
         }
         
         /* Form Elements */
-        .form-row {
-            margin-bottom: 20px;
-        }
-        
-        .form-row:last-child {
-            margin-bottom: 0;
-        }
+        .form-row { margin-bottom: 20px; }
+        .form-row:last-child { margin-bottom: 0; }
         
         .form-label {
             display: block;
@@ -206,8 +200,7 @@
             font-weight: 400;
         }
         
-        .form-input,
-        .form-select {
+        .form-input, .form-select {
             width: 100%;
             padding: 14px 16px;
             background: var(--bg-input);
@@ -229,32 +222,19 @@
             padding-right: 44px;
         }
         
-        .form-input:focus,
-        .form-select:focus {
+        .form-input:focus, .form-select:focus {
             outline: none;
             border-color: var(--green);
             box-shadow: 0 0 0 3px var(--green-glow);
         }
         
-        .form-input::placeholder {
-            color: var(--text-muted);
-        }
-        
         option {
             background: var(--bg-secondary);
             color: var(--text-primary);
-            padding: 12px;
         }
         
-        /* Input with unit */
-        .input-with-unit {
-            position: relative;
-        }
-        
-        .input-with-unit .form-input {
-            padding-right: 60px;
-        }
-        
+        .input-with-unit { position: relative; }
+        .input-with-unit .form-input { padding-right: 60px; }
         .input-unit {
             position: absolute;
             right: 16px;
@@ -288,15 +268,8 @@
             box-shadow: 0 8px 30px rgba(34, 197, 94, 0.3);
         }
         
-        .btn-calculate:active {
-            transform: translateY(0);
-        }
-        
-        .btn-calculate:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-            transform: none;
-        }
+        .btn-calculate:active { transform: translateY(0); }
+        .btn-calculate:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
         
         .btn-calculate .spinner {
             display: inline-block;
@@ -308,15 +281,9 @@
             to { transform: rotate(360deg); }
         }
         
-        /* Results Card - Full Width */
-        .results-wrapper {
-            grid-column: 1 / -1;
-        }
-        
-        .results-card {
-            display: none;
-        }
-        
+        /* Results */
+        .results-wrapper { grid-column: 1 / -1; }
+        .results-card { display: none; }
         .results-card.show {
             display: block;
             animation: fadeSlideUp 0.4s ease;
@@ -327,7 +294,7 @@
             to { opacity: 1; transform: translateY(0); }
         }
         
-        /* Result Metrics */
+        /* Metrics Grid */
         .metrics-grid {
             display: grid;
             grid-template-columns: repeat(4, 1fr);
@@ -371,12 +338,54 @@
             background: var(--green-subtle);
         }
         
-        .metric.highlight .metric-value {
-            color: var(--green);
-            text-shadow: 0 0 20px var(--green-glow);
+        /* Chart Section */
+        .chart-section {
+            background: var(--bg-secondary);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 24px;
         }
         
-        /* Assumptions Table */
+        .chart-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+        
+        .chart-title {
+            font-size: 0.8rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+        }
+        
+        .chart-legend {
+            display: flex;
+            gap: 16px;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+        
+        .legend-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+        }
+        
+        .chart-container {
+            position: relative;
+            height: 280px;
+        }
+        
+        /* Assumptions */
         .assumptions-section {
             background: var(--bg-secondary);
             border-radius: 12px;
@@ -402,9 +411,7 @@
             align-items: center;
         }
         
-        .assumption-row:last-child {
-            border-bottom: none;
-        }
+        .assumption-row:last-child { border-bottom: none; }
         
         .assumption-name {
             font-size: 0.9rem;
@@ -423,7 +430,6 @@
             font-weight: 600;
             font-family: 'JetBrains Mono', monospace;
             text-transform: uppercase;
-            letter-spacing: 0.03em;
         }
         
         .assumption-source {
@@ -464,12 +470,6 @@
             border: 1px solid rgba(234, 179, 8, 0.2);
         }
         
-        .status-message.error {
-            background: rgba(239, 68, 68, 0.08);
-            color: var(--red);
-            border: 1px solid rgba(239, 68, 68, 0.2);
-        }
-        
         /* Error Banner */
         .error-banner {
             display: none;
@@ -484,9 +484,7 @@
             gap: 10px;
         }
         
-        .error-banner.show {
-            display: flex;
-        }
+        .error-banner.show { display: flex; }
         
         /* Footer */
         .footer {
@@ -504,79 +502,55 @@
         .footer .powered-by {
             margin-top: 8px;
             font-size: 0.7rem;
-            color: var(--text-muted);
             opacity: 0.7;
         }
         
         /* Mobile */
         @media (max-width: 768px) {
-            .app {
-                padding: 16px;
-            }
-            
+            .app { padding: 16px; }
             .header {
                 flex-direction: column;
                 align-items: flex-start;
                 gap: 16px;
                 padding: 16px 0 24px;
             }
-            
             .live-indicators {
                 width: 100%;
                 justify-content: space-between;
             }
-            
             .live-dot {
                 flex: 1;
                 justify-content: center;
                 padding: 8px 6px;
                 font-size: 0.7rem;
             }
-            
             .main-grid {
                 grid-template-columns: 1fr;
                 gap: 16px;
             }
-            
             .metrics-grid {
                 grid-template-columns: repeat(2, 1fr);
             }
-            
             .metric {
                 padding: 18px 14px;
             }
-            
             .metric-value {
                 font-size: 1.4rem;
             }
-            
             .assumption-row {
                 grid-template-columns: 1fr auto;
                 gap: 12px;
             }
-            
-            .assumption-source {
-                display: none;
-            }
-            
-            .card-body {
-                padding: 18px;
-            }
+            .assumption-source { display: none; }
+            .card-body { padding: 18px; }
+            .chart-container { height: 220px; }
+            .chart-legend { flex-wrap: wrap; gap: 10px; }
         }
         
         @media (max-width: 480px) {
-            .brand-text h1 {
-                font-size: 1.2rem;
-            }
-            
-            .metrics-grid {
-                grid-template-columns: 1fr;
-            }
-            
-            .live-dot {
-                padding: 6px 4px;
-                font-size: 0.65rem;
-            }
+            .brand-text h1 { font-size: 1.2rem; }
+            .metrics-grid { grid-template-columns: 1fr; }
+            .live-dot { padding: 6px 4px; font-size: 0.65rem; }
         }
     </style>
 </head>
@@ -601,7 +575,7 @@
         
         <!-- Main Content -->
         <main class="main-grid">
-            <!-- Input Card - Base Currency -->
+            <!-- Base Currency Card -->
             <div class="card">
                 <div class="card-header">
                     <span class="card-title">Base Currency</span>
@@ -640,7 +614,7 @@
                 </div>
             </div>
             
-            <!-- Input Card - Target & Tenor -->
+            <!-- Target & Parameters Card -->
             <div class="card">
                 <div class="card-header">
                     <span class="card-title">Target & Parameters</span>
@@ -698,6 +672,30 @@
                             </div>
                         </div>
                         
+                        <!-- Yield Curve Chart -->
+                        <div class="chart-section">
+                            <div class="chart-header">
+                                <span class="chart-title">Risk-Free Yield Curves</span>
+                                <div class="chart-legend">
+                                    <div class="legend-item">
+                                        <span class="legend-dot" id="legendBase" style="background: #22c55e;"></span>
+                                        <span id="legendBaseLabel">Base</span>
+                                    </div>
+                                    <div class="legend-item">
+                                        <span class="legend-dot" id="legendTarget" style="background: #14b8a6;"></span>
+                                        <span id="legendTargetLabel">Target</span>
+                                    </div>
+                                    <div class="legend-item">
+                                        <span class="legend-dot" style="background: #eab308; width: 8px; height: 8px; border: 2px solid #eab308;"></span>
+                                        <span>Selected Tenor</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="chart-container">
+                                <canvas id="yieldCurveChart"></canvas>
+                            </div>
+                        </div>
+                        
                         <div class="assumptions-section">
                             <div class="assumptions-header">Key Assumptions</div>
                             <div id="assumptionsList"></div>
@@ -718,6 +716,7 @@
 
     <script>
         const API_BASE = window.location.origin + '/api';
+        let yieldChart = null;
         
         // Check live status
         async function checkStatus() {
@@ -735,7 +734,7 @@
             }
         }
         
-        // Load indexers for selected currency
+        // Load indexers
         async function loadIndexers() {
             const ccy = document.getElementById('baseCurrency').value;
             const sel = document.getElementById('indexerKey');
@@ -757,16 +756,164 @@
                     opt.value = idx.key;
                     const isLive = idx.label.includes('[Live]');
                     opt.textContent = `${idx.label.replace(' [Live]', '')} — ${idx.value.toFixed(2)}%${isLive ? ' ★' : ''}`;
-                    opt.dataset.live = isLive;
                     sel.appendChild(opt);
                 });
             } catch (e) {
-                sel.innerHTML = '<option value="">Error loading indexers</option>';
-                console.error('Failed to load indexers:', e);
+                sel.innerHTML = '<option value="">Error loading</option>';
             }
         }
         
         document.getElementById('baseCurrency').addEventListener('change', loadIndexers);
+        
+        // Fetch yield curve data
+        async function fetchCurve(currency) {
+            try {
+                const res = await fetch(`${API_BASE}/curves/${currency}`);
+                if (res.ok) {
+                    return await res.json();
+                }
+            } catch (e) {
+                console.error(`Failed to fetch ${currency} curve:`, e);
+            }
+            return null;
+        }
+        
+        // Update chart
+        async function updateChart(baseCcy, targetCcy, selectedTenor, baseRate, targetRate) {
+            const [baseCurve, targetCurve] = await Promise.all([
+                fetchCurve(baseCcy),
+                fetchCurve(targetCcy)
+            ]);
+            
+            if (!baseCurve || !targetCurve) return;
+            
+            // Update legend labels
+            document.getElementById('legendBaseLabel').textContent = baseCcy;
+            document.getElementById('legendTargetLabel').textContent = targetCcy;
+            
+            const tenors = baseCurve.curve.map(p => p.tenor);
+            const baseRates = baseCurve.curve.map(p => p.rate);
+            const targetRates = targetCurve.curve.map(p => p.rate);
+            
+            const ctx = document.getElementById('yieldCurveChart').getContext('2d');
+            
+            if (yieldChart) {
+                yieldChart.destroy();
+            }
+            
+            // Find selected tenor point for annotation
+            const selectedBaseRate = baseRate;
+            const selectedTargetRate = targetRate;
+            
+            yieldChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: tenors.map(t => t + 'Y'),
+                    datasets: [
+                        {
+                            label: baseCcy,
+                            data: baseRates,
+                            borderColor: '#22c55e',
+                            backgroundColor: 'rgba(34, 197, 94, 0.1)',
+                            borderWidth: 2,
+                            tension: 0.4,
+                            fill: true,
+                            pointRadius: 3,
+                            pointBackgroundColor: '#22c55e',
+                            pointBorderColor: '#22c55e'
+                        },
+                        {
+                            label: targetCcy,
+                            data: targetRates,
+                            borderColor: '#14b8a6',
+                            backgroundColor: 'rgba(20, 184, 166, 0.1)',
+                            borderWidth: 2,
+                            tension: 0.4,
+                            fill: true,
+                            pointRadius: 3,
+                            pointBackgroundColor: '#14b8a6',
+                            pointBorderColor: '#14b8a6'
+                        },
+                        {
+                            label: 'Selected Points',
+                            data: tenors.map((t, i) => {
+                                if (Math.abs(t - selectedTenor) < 0.5) {
+                                    return baseRates[i];
+                                }
+                                return null;
+                            }),
+                            borderColor: '#eab308',
+                            backgroundColor: '#eab308',
+                            borderWidth: 0,
+                            pointRadius: tenors.map(t => Math.abs(t - selectedTenor) < 0.5 ? 8 : 0),
+                            pointBackgroundColor: '#eab308',
+                            pointBorderColor: '#0a0a0b',
+                            pointBorderWidth: 2,
+                            showLine: false
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        intersect: false,
+                        mode: 'index'
+                    },
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            backgroundColor: '#1a1a1d',
+                            titleColor: '#fafafa',
+                            bodyColor: '#a1a1aa',
+                            borderColor: '#2a2a2e',
+                            borderWidth: 1,
+                            padding: 12,
+                            displayColors: true,
+                            callbacks: {
+                                label: function(context) {
+                                    if (context.dataset.label === 'Selected Points') return null;
+                                    return `${context.dataset.label}: ${context.parsed.y.toFixed(2)}%`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: {
+                                color: 'rgba(42, 42, 46, 0.5)',
+                                drawBorder: false
+                            },
+                            ticks: {
+                                color: '#71717a',
+                                font: {
+                                    family: "'JetBrains Mono', monospace",
+                                    size: 11
+                                }
+                            }
+                        },
+                        y: {
+                            grid: {
+                                color: 'rgba(42, 42, 46, 0.5)',
+                                drawBorder: false
+                            },
+                            ticks: {
+                                color: '#71717a',
+                                font: {
+                                    family: "'JetBrains Mono', monospace",
+                                    size: 11
+                                },
+                                callback: function(value) {
+                                    return value.toFixed(1) + '%';
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
         
         // Calculate
         document.getElementById('calculateBtn').addEventListener('click', async () => {
@@ -784,7 +931,6 @@
                 spread: parseFloat(document.getElementById('spread').value)
             };
             
-            // Validate
             if (!payload.base_currency || !payload.base_indexer_key || !payload.target_currency) {
                 document.getElementById('errorText').textContent = 'Please complete all fields';
                 errorBanner.classList.add('show');
@@ -852,6 +998,15 @@
                     statusMessages.appendChild(div);
                 });
                 
+                // Update chart
+                await updateChart(
+                    payload.base_currency,
+                    payload.target_currency,
+                    payload.tenor,
+                    data.risk_free_base,
+                    data.risk_free_target
+                );
+                
                 resultsCard.classList.add('show');
                 resultsCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
                 
@@ -865,7 +1020,7 @@
             }
         });
         
-        // Allow Enter key to submit
+        // Enter key submit
         document.querySelectorAll('.form-input, .form-select').forEach(el => {
             el.addEventListener('keypress', (e) => {
                 if (e.key === 'Enter') {
