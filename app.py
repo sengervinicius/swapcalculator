@@ -334,9 +334,12 @@ class BOEClient:
             end_date = datetime.now()
             start_date = end_date - timedelta(days=30)
             
-            async with httpx.AsyncClient(timeout=10.0) as client:
+            # Use the correct BoE IADB URL
+            url = "https://www.bankofengland.co.uk/boeapps/iadb/fromshowcolumns.asp"
+            
+            async with httpx.AsyncClient(timeout=15.0) as client:
                 response = await client.get(
-                    config.BOE_BASE_URL,
+                    url,
                     params={
                         "csv.x": "yes",
                         "Datefrom": start_date.strftime("%d/%b/%Y"),
@@ -347,27 +350,41 @@ class BOEClient:
                         "VPD": "Y",
                         "VFD": "N"
                     },
-                    headers={"User-Agent": "HedgedReturnConverter/2.1"}
+                    headers={"User-Agent": "CrossFXYield/2.3"},
+                    follow_redirects=True
                 )
                 
                 if response.status_code == 200:
-                    lines = response.text.strip().split("\n")
-                    for line in reversed(lines[1:] if len(lines) > 1 else []):
+                    text = response.text.strip()
+                    lines = text.split("\n")
+                    # Parse CSV - format is: DATE, VALUE
+                    for line in reversed(lines):
+                        if not line.strip() or line.startswith("DATE"):
+                            continue
                         parts = line.split(",")
                         if len(parts) >= 2:
                             try:
-                                rate = float(parts[1])
-                                cache.set(cache_key, rate)
-                                logger.info(f"✅ BoE {series_code}: {rate}%")
-                                return rate
+                                value_str = parts[1].strip()
+                                if value_str and value_str != ".." and value_str != ".":
+                                    rate = float(value_str)
+                                    cache.set(cache_key, rate)
+                                    logger.info(f"✅ BoE {series_code}: {rate}%")
+                                    return rate
                             except (ValueError, IndexError):
                                 continue
         except Exception as e:
-            logger.error(f"BoE error: {e}")
+            logger.error(f"BoE error for {series_code}: {e}")
         
         return None
     
     async def get_sonia(self) -> Optional[float]:
+        """Get SONIA rate - try FRED first (more reliable), then BoE"""
+        # SONIA is also on FRED as IUDSOIA
+        if config.FRED_API_KEY:
+            rate = await fred_client.get_series_latest("IUDSOIA")
+            if rate is not None:
+                return rate
+        # Fallback to BoE direct
         return await self.get_series("IUDSOIA")
 
 
@@ -592,7 +609,7 @@ async def get_live_risk_free_curve_eur() -> Optional[dict]:
 
 
 async def get_live_risk_free_curve_gbp() -> Optional[dict]:
-    """Fetch live GBP Gilt curve from BoE"""
+    """Fetch live GBP curve - use FRED for gilt yields"""
     if not HTTPX_AVAILABLE:
         return None
     
@@ -602,30 +619,42 @@ async def get_live_risk_free_curve_gbp() -> Optional[dict]:
         return cached
     
     try:
-        # BoE Gilt yields
-        tenors = {
-            2: "IUMAJNM",   # 2Y Gilt
-            5: "IUMAMNM",   # 5Y Gilt
-            10: "IUMALNM"   # 10Y Gilt
-        }
         curve = {}
         
-        for years, series_code in tenors.items():
+        # Get SONIA for short end
+        sonia = await boe_client.get_sonia()
+        if sonia:
+            curve[1] = sonia
+        
+        # Get Gilt yields from FRED (Bank of England data mirrored on FRED)
+        # FRED series: IRLTLT01GBM156N (10Y), etc.
+        gilt_10y = await fred_client.get_series_latest("IRLTLT01GBM156N")
+        if gilt_10y:
+            curve[10] = gilt_10y
+        
+        # Try BoE direct for more tenors
+        tenors_boe = {
+            5: "IUDMNPY",   # 5Y nominal par yield
+            20: "IUDLNPY"   # 20Y nominal par yield
+        }
+        
+        for years, series_code in tenors_boe.items():
             rate = await boe_client.get_series(series_code)
             if rate is not None:
                 curve[years] = rate
         
         if len(curve) >= 2:
-            # Interpolate 1Y from SONIA
-            sonia = await boe_client.get_sonia()
-            if sonia:
-                curve[1] = sonia
+            # Interpolate missing points
+            if 1 in curve and 10 in curve and 5 not in curve:
+                curve[5] = (curve[1] + curve[10]) / 2
+            if 1 in curve and 5 in curve and 2 not in curve:
+                curve[2] = curve[1] + (curve[5] - curve[1]) * 0.25
             
             cache.set(cache_key, curve)
-            logger.info(f"✅ BoE GBP curve: {curve}")
+            logger.info(f"✅ GBP curve: {curve}")
             return curve
     except Exception as e:
-        logger.error(f"BoE curve error: {e}")
+        logger.error(f"GBP curve error: {e}")
     
     return None
 
@@ -720,6 +749,54 @@ async def get_risk_free_curve(currency: str):
         "currency": currency,
         "curve": {str(k): v for k, v in FALLBACK_RISK_FREE[currency].items()},
         "source": "Reference Data"
+    }
+
+
+@app.get("/api/curves/{currency}", tags=["Reference Data"])
+async def get_yield_curve_for_chart(currency: str):
+    """Get full yield curve data for charting (tenors 1-30 years)"""
+    currency = currency.upper()
+    if currency not in ['BRL', 'USD', 'EUR', 'GBP']:
+        raise HTTPException(status_code=404, detail=f"Currency {currency} not supported")
+    
+    # Standard tenors for the chart
+    tenors = [1, 2, 3, 5, 7, 10, 15, 20, 30]
+    curve_data = []
+    source = "Reference"
+    
+    # Try to get live curve first
+    live_curve = None
+    try:
+        if currency == "USD":
+            live_curve = await get_live_risk_free_curve_usd()
+        elif currency == "BRL":
+            live_curve = await get_live_risk_free_curve_brl()
+        elif currency == "EUR":
+            live_curve = await get_live_risk_free_curve_eur()
+        elif currency == "GBP":
+            live_curve = await get_live_risk_free_curve_gbp()
+        
+        if live_curve:
+            source = "Live"
+    except Exception as e:
+        logger.error(f"Error fetching live curve for {currency}: {e}")
+    
+    # Build curve data for each tenor
+    for t in tenors:
+        rate = None
+        if live_curve:
+            rate = interpolate_rate(live_curve, t)
+        if rate is None:
+            rate = interpolate_fallback_rate(currency, t)
+        
+        if rate is not None:
+            curve_data.append({"tenor": t, "rate": round(rate, 4)})
+    
+    return {
+        "currency": currency,
+        "source": source,
+        "as_of": datetime.now().strftime("%Y-%m-%d"),
+        "curve": curve_data
     }
 
 @app.post("/api/risk-free-rates/interpolate", tags=["Reference Data"], response_model=RiskFreeRateResponse)
