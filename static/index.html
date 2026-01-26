@@ -593,13 +593,14 @@
             }
             .live-indicators {
                 width: 100%;
-                justify-content: space-between;
+                display: grid;
+                grid-template-columns: repeat(4, 1fr);
+                gap: 6px;
             }
             .live-dot {
-                flex: 1;
                 justify-content: center;
-                padding: 8px 6px;
-                font-size: 0.7rem;
+                padding: 6px 4px;
+                font-size: 0.65rem;
             }
             .main-grid {
                 grid-template-columns: 1fr;
@@ -627,7 +628,18 @@
         @media (max-width: 480px) {
             .brand-text h1 { font-size: 1.2rem; }
             .metrics-grid { grid-template-columns: 1fr; }
-            .live-dot { padding: 6px 4px; font-size: 0.65rem; }
+            .live-indicators {
+                grid-template-columns: repeat(4, 1fr);
+            }
+            .live-dot { 
+                padding: 5px 2px; 
+                font-size: 0.6rem;
+                gap: 3px;
+            }
+            .live-dot .dot {
+                width: 5px;
+                height: 5px;
+            }
         }
     </style>
 </head>
@@ -647,6 +659,10 @@
                 <div class="live-dot"><span class="dot" id="dotUSD"></span> USD</div>
                 <div class="live-dot"><span class="dot" id="dotEUR"></span> EUR</div>
                 <div class="live-dot"><span class="dot" id="dotGBP"></span> GBP</div>
+                <div class="live-dot"><span class="dot" id="dotCHF"></span> CHF</div>
+                <div class="live-dot"><span class="dot" id="dotJPY"></span> JPY</div>
+                <div class="live-dot"><span class="dot" id="dotCAD"></span> CAD</div>
+                <div class="live-dot"><span class="dot" id="dotAUD"></span> AUD</div>
             </div>
         </header>
         
@@ -671,6 +687,11 @@
                             <option value="USD">USD — US Dollar</option>
                             <option value="EUR">EUR — Euro</option>
                             <option value="GBP">GBP — British Pound</option>
+                            <option value="CHF">CHF — Swiss Franc</option>
+                            <option value="JPY">JPY — Japanese Yen</option>
+                            <option value="CNY">CNY — Chinese Yuan</option>
+                            <option value="CAD">CAD — Canadian Dollar</option>
+                            <option value="AUD">AUD — Australian Dollar</option>
                         </select>
                     </div>
                     
@@ -705,6 +726,11 @@
                             <option value="USD" selected>USD — US Dollar</option>
                             <option value="EUR">EUR — Euro</option>
                             <option value="GBP">GBP — British Pound</option>
+                            <option value="CHF">CHF — Swiss Franc</option>
+                            <option value="JPY">JPY — Japanese Yen</option>
+                            <option value="CNY">CNY — Chinese Yuan</option>
+                            <option value="CAD">CAD — Canadian Dollar</option>
+                            <option value="AUD">AUD — Australian Dollar</option>
                         </select>
                     </div>
                     
@@ -811,10 +837,17 @@
                 const res = await fetch(`${API_BASE}/config/status`);
                 if (res.ok) {
                     const data = await res.json();
-                    document.getElementById('dotBRL').className = 'dot' + (data.bcb_configured && data.httpx_available ? ' active' : '');
-                    document.getElementById('dotUSD').className = 'dot' + (data.fred_configured && data.httpx_available ? ' active' : '');
-                    document.getElementById('dotEUR').className = 'dot' + (data.httpx_available ? ' active' : '');
-                    document.getElementById('dotGBP').className = 'dot' + (data.httpx_available ? ' active' : '');
+                    const httpx = data.httpx_available;
+                    const fred = data.fred_configured && httpx;
+                    
+                    document.getElementById('dotBRL').className = 'dot' + (data.bcb_configured && httpx ? ' active' : '');
+                    document.getElementById('dotUSD').className = 'dot' + (fred ? ' active' : '');
+                    document.getElementById('dotEUR').className = 'dot' + (httpx ? ' active' : '');
+                    document.getElementById('dotGBP').className = 'dot' + (httpx ? ' active' : '');
+                    document.getElementById('dotCHF').className = 'dot' + (fred ? ' active' : '');
+                    document.getElementById('dotJPY').className = 'dot' + (fred ? ' active' : '');
+                    document.getElementById('dotCAD').className = 'dot' + (fred ? ' active' : '');
+                    document.getElementById('dotAUD').className = 'dot' + (fred ? ' active' : '');
                 }
             } catch (e) {
                 console.error('Status check failed:', e);
