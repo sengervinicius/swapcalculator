@@ -478,10 +478,10 @@ async def get_live_indexers(currency: str) -> List[dict]:
                 indexers.append(FALLBACK_INDEXERS['GBP'][1])
         
         elif currency == 'CHF':
-            # SARON from FRED: SAROISNBSW (Swiss National Bank)
-            saron = await fred_client.get_series_latest("SAROISNBSW")
-            if saron is not None:
-                indexers.append({'key': 'saron', 'label': 'SARON [Live]', 'value': round(saron, 2)})
+            # Swiss short-term rate from FRED (OECD data)
+            chf_short = await fred_client.get_series_latest("IRSTCI01CHM156N")
+            if chf_short is not None:
+                indexers.append({'key': 'saron', 'label': 'CHF Short Rate [Live]', 'value': round(chf_short, 2)})
             else:
                 indexers.append(FALLBACK_INDEXERS['CHF'][1])
             indexers.append(FALLBACK_INDEXERS['CHF'][2])
@@ -731,7 +731,7 @@ async def get_live_risk_free_curve_gbp() -> Optional[dict]:
 
 
 async def get_live_risk_free_curve_chf() -> Optional[dict]:
-    """Fetch live CHF curve from FRED"""
+    """Fetch live CHF curve from FRED (OECD data)"""
     if not HTTPX_AVAILABLE or not config.FRED_API_KEY:
         return None
     
@@ -742,17 +742,20 @@ async def get_live_risk_free_curve_chf() -> Optional[dict]:
     
     try:
         curve = {}
-        # Swiss government bond yields from FRED
-        chf_10y = await fred_client.get_series_latest("IRLTLT01CHM156N")
-        saron = await fred_client.get_series_latest("SAROISNBSW")
+        # Swiss rates from FRED (OECD data)
+        chf_short = await fred_client.get_series_latest("IRSTCI01CHM156N")  # Overnight/call rate
+        chf_3m = await fred_client.get_series_latest("IR3TIB01CHM156N")     # 3-month interbank
+        chf_10y = await fred_client.get_series_latest("IRLTLT01CHM156N")    # 10Y govt bond
         
-        if saron:
-            curve[1] = saron
-        if chf_10y:
+        if chf_short is not None:
+            curve[1] = chf_short
+        if chf_3m is not None:
+            curve[0.25] = chf_3m  # 3 months
+        if chf_10y is not None:
             curve[10] = chf_10y
         
-        if len(curve) >= 1:
-            # Build curve from available points
+        if len(curve) >= 2:
+            # Interpolate missing points
             if 1 in curve and 10 in curve:
                 curve[2] = curve[1] + (curve[10] - curve[1]) * 0.1
                 curve[5] = curve[1] + (curve[10] - curve[1]) * 0.4
