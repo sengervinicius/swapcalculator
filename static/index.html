@@ -505,6 +505,83 @@
             opacity: 0.7;
         }
         
+        /* Thank You Button */
+        .thanks-section {
+            margin-top: 24px;
+            padding-top: 24px;
+            border-top: 1px solid var(--border);
+        }
+        
+        .thanks-text {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            margin-bottom: 12px;
+        }
+        
+        .btn-thanks {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 12px 24px;
+            background: transparent;
+            border: 1px solid var(--green);
+            border-radius: 50px;
+            color: var(--green);
+            font-size: 0.85rem;
+            font-weight: 500;
+            font-family: 'Outfit', sans-serif;
+            text-decoration: none;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .btn-thanks::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, var(--green) 0%, var(--emerald) 100%);
+            transition: left 0.3s ease;
+            z-index: -1;
+        }
+        
+        .btn-thanks:hover {
+            color: var(--bg-primary);
+            border-color: var(--green);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(34, 197, 94, 0.3);
+        }
+        
+        .btn-thanks:hover::before {
+            left: 0;
+        }
+        
+        .btn-thanks .heart {
+            font-size: 1.1rem;
+            transition: transform 0.3s ease;
+        }
+        
+        .btn-thanks:hover .heart {
+            transform: scale(1.2);
+            animation: heartbeat 0.6s ease-in-out infinite;
+        }
+        
+        @keyframes heartbeat {
+            0%, 100% { transform: scale(1.2); }
+            50% { transform: scale(1.4); }
+        }
+        
+        .thanks-note {
+            margin-top: 8px;
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            opacity: 0.6;
+        }
+        
         /* Mobile */
         @media (max-width: 768px) {
             .app { padding: 16px; }
@@ -711,6 +788,16 @@
         <footer class="footer">
             <div>Designed by <span class="designer">Vinicius Senger</span></div>
             <div class="powered-by">Powered by BCB · FRED · ECB · BoE</div>
+            
+            <div class="thanks-section">
+                <div class="thanks-text">Find this useful?</div>
+                <a href="mailto:senger.vinicius@gmail.com?subject=Thanks%20for%20CrossFX%20Yield!&body=Hey%20Vini!%0A%0AJust%20wanted%20to%20say%20thanks%20for%20building%20CrossFX%20Yield.%20It's%20really%20helpful!%0A%0ACheers!" 
+                   class="btn-thanks">
+                    <span class="heart">💚</span>
+                    Say Thanks to Vini
+                </a>
+                <div class="thanks-note">No fees applied — just good vibes ✨</div>
+            </div>
         </footer>
     </div>
 
