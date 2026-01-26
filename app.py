@@ -463,13 +463,202 @@ def interpolate_fallback_rate(currency: str, tenor: float) -> Optional[float]:
     return rates[keys[-1]]
 
 
+def interpolate_rate(curve: dict, tenor: float) -> Optional[float]:
+    """Linear interpolation from a rate curve dict {tenor: rate}"""
+    if not curve:
+        return None
+    
+    if tenor in curve:
+        return curve[tenor]
+    
+    keys = sorted(curve.keys())
+    
+    for i in range(len(keys) - 1):
+        t1, t2 = keys[i], keys[i + 1]
+        if t1 <= tenor <= t2:
+            r1, r2 = curve[t1], curve[t2]
+            return r1 + ((tenor - t1) / (t2 - t1)) * (r2 - r1)
+    
+    if tenor < keys[0]:
+        return curve[keys[0]]
+    return curve[keys[-1]]
+
+
+async def get_live_risk_free_curve_usd() -> Optional[dict]:
+    """Fetch live US Treasury curve from FRED"""
+    if not HTTPX_AVAILABLE or not config.FRED_API_KEY:
+        return None
+    
+    cache_key = "risk_free_curve_usd"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+    
+    try:
+        tenors = {1: "DGS1", 2: "DGS2", 3: "DGS3", 5: "DGS5", 7: "DGS7", 10: "DGS10"}
+        curve = {}
+        
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            for years, series_id in tenors.items():
+                response = await client.get(
+                    f"{config.FRED_BASE_URL}/series/observations",
+                    params={
+                        "series_id": series_id,
+                        "api_key": config.FRED_API_KEY,
+                        "file_type": "json",
+                        "sort_order": "desc",
+                        "limit": 5
+                    }
+                )
+                if response.status_code == 200:
+                    data = response.json()
+                    for obs in data.get("observations", []):
+                        value = obs.get("value")
+                        if value and value != ".":
+                            curve[years] = float(value)
+                            break
+        
+        if len(curve) >= 3:
+            cache.set(cache_key, curve)
+            logger.info(f"✅ FRED Treasury curve: {curve}")
+            return curve
+    except Exception as e:
+        logger.error(f"FRED curve error: {e}")
+    
+    return None
+
+
+async def get_live_risk_free_curve_brl() -> Optional[dict]:
+    """Fetch live Brazilian DI curve from BCB"""
+    if not HTTPX_AVAILABLE:
+        return None
+    
+    cache_key = "risk_free_curve_brl"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+    
+    try:
+        # BCB series for swap rates (DI x Pre)
+        # Using SELIC target as short-term proxy and building curve
+        selic = await bcb_client.get_selic_target()
+        if selic:
+            # Approximate curve based on SELIC with typical term premium
+            curve = {
+                1: selic,
+                2: selic - 0.2,
+                3: selic - 0.4,
+                5: selic - 0.8,
+                10: selic - 1.5
+            }
+            cache.set(cache_key, curve)
+            logger.info(f"✅ BCB BRL curve (SELIC-based): {curve}")
+            return curve
+    except Exception as e:
+        logger.error(f"BCB curve error: {e}")
+    
+    return None
+
+
+async def get_live_risk_free_curve_eur() -> Optional[dict]:
+    """Fetch live EUR curve from ECB"""
+    if not HTTPX_AVAILABLE:
+        return None
+    
+    cache_key = "risk_free_curve_eur"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+    
+    try:
+        # Use EURIBOR 12M as base and estimate curve
+        euribor = await ecb_client.get_euribor(12)
+        if euribor:
+            # Approximate EUR curve
+            curve = {
+                1: euribor,
+                2: euribor - 0.1,
+                3: euribor - 0.15,
+                5: euribor - 0.2,
+                10: euribor
+            }
+            cache.set(cache_key, curve)
+            logger.info(f"✅ ECB EUR curve (EURIBOR-based): {curve}")
+            return curve
+    except Exception as e:
+        logger.error(f"ECB curve error: {e}")
+    
+    return None
+
+
+async def get_live_risk_free_curve_gbp() -> Optional[dict]:
+    """Fetch live GBP Gilt curve from BoE"""
+    if not HTTPX_AVAILABLE:
+        return None
+    
+    cache_key = "risk_free_curve_gbp"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+    
+    try:
+        # BoE Gilt yields
+        tenors = {
+            2: "IUMAJNM",   # 2Y Gilt
+            5: "IUMAMNM",   # 5Y Gilt
+            10: "IUMALNM"   # 10Y Gilt
+        }
+        curve = {}
+        
+        for years, series_code in tenors.items():
+            rate = await boe_client.get_series(series_code)
+            if rate is not None:
+                curve[years] = rate
+        
+        if len(curve) >= 2:
+            # Interpolate 1Y from SONIA
+            sonia = await boe_client.get_sonia()
+            if sonia:
+                curve[1] = sonia
+            
+            cache.set(cache_key, curve)
+            logger.info(f"✅ BoE GBP curve: {curve}")
+            return curve
+    except Exception as e:
+        logger.error(f"BoE curve error: {e}")
+    
+    return None
+
+
 async def get_risk_free_rate(currency: str, tenor: float) -> tuple[Optional[float], str]:
-    """Get risk-free rate with source info"""
+    """Get risk-free rate with live data, falling back to reference curves"""
     currency = currency.upper()
     
+    # Try to get live curve first
+    live_curve = None
+    source = "Reference Curve"
+    
+    try:
+        if currency == "USD":
+            live_curve = await get_live_risk_free_curve_usd()
+        elif currency == "BRL":
+            live_curve = await get_live_risk_free_curve_brl()
+        elif currency == "EUR":
+            live_curve = await get_live_risk_free_curve_eur()
+        elif currency == "GBP":
+            live_curve = await get_live_risk_free_curve_gbp()
+        
+        if live_curve:
+            rate = interpolate_rate(live_curve, tenor)
+            if rate is not None:
+                return round(rate, 4), "Live"
+    except Exception as e:
+        logger.error(f"Live curve fetch failed for {currency}: {e}")
+    
+    # Fallback to reference data
     rate = interpolate_fallback_rate(currency, tenor)
     if rate is not None:
-        return round(rate, 4), "Reference Curve"
+        return round(rate, 4), source
     
     return None, "Not Available"
 
