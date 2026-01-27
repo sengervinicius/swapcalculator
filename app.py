@@ -1533,6 +1533,13 @@ def get_hedging_cost_sync(base_currency: str, target_currency: str, tenor: float
     """
     Synchronous fallback for hedging cost calculation.
     Uses static reference data when live data is unavailable.
+    
+    IMPORTANT: The hedging cost represents what you PAY or GAIN when hedging
+    from base currency to target currency.
+    
+    For EM currencies like ARS with extreme NDF implied rates:
+    - ARS → USD: You're selling ARS forward at a steep discount (high cost to you)
+    - USD → ARS: You're buying ARS forward at a steep discount (benefit to you)
     """
     base = base_currency.upper()
     target = target_currency.upper()
@@ -1552,7 +1559,7 @@ def get_hedging_cost_sync(base_currency: str, target_currency: str, tenor: float
     base_info = HEDGING_COST_INFO.get(base, {'type': 'unknown', 'instrument': 'Unknown', 'notes': '', 'data_quality': 'unknown'})
     target_info = HEDGING_COST_INFO.get(target, {'type': 'unknown', 'instrument': 'Unknown', 'notes': '', 'data_quality': 'unknown'})
     
-    # Get costs from lookup
+    # Get costs from lookup (these are USD-based: cost of hedging USD → CCY)
     base_cost = interpolate_hedging_cost(base, tenor) or 0
     target_cost = interpolate_hedging_cost(target, tenor) or 0
     
@@ -1561,6 +1568,9 @@ def get_hedging_cost_sync(base_currency: str, target_currency: str, tenor: float
     target_quality = target_info.get('data_quality', 'estimate')
     
     # Calculate hedging cost based on direction
+    # The FALLBACK_HEDGING_COST values are stored as: cost of hedging USD → CCY
+    # Positive = benefit (you gain carry), Negative = cost (you pay carry)
+    
     if base == 'USD' and target == 'BRL':
         # USD → BRL: Use BRL fallback directly (stored as positive = benefit)
         cost_bps = target_cost
@@ -1575,6 +1585,46 @@ def get_hedging_cost_sync(base_currency: str, target_currency: str, tenor: float
         notes = f"Cupom cambial estimate ({base}→{target})"
         data_quality = "estimate"
         typical_range = "-150 to -50 bps"  # Inverted BRL range
+    
+    # ARS special handling - extreme NDF market
+    elif base == 'USD' and target == 'ARS':
+        # USD → ARS: You receive the high implied rate (benefit)
+        # The fallback is stored as negative because hedging USD→ARS typically 
+        # means receiving devaluation premium
+        cost_bps = -target_cost  # Flip sign: ARS stored as negative, but USD→ARS is a benefit
+        instrument = "Non-Deliverable Forward (NDF)"
+        notes = f"ARS NDF implied rate ({base}→{target}) • High devaluation premium"
+        data_quality = "estimate"
+        typical_range = "+500 to +2000 bps (devaluation premium)"
+    elif base == 'ARS' and target == 'USD':
+        # ARS → USD: You pay the high implied rate (cost)
+        cost_bps = target_cost if target_cost else interpolate_hedging_cost('ARS', tenor)
+        cost_bps = interpolate_hedging_cost('ARS', tenor)  # Use ARS cost directly (already negative)
+        instrument = "Non-Deliverable Forward (NDF)"
+        notes = f"ARS NDF implied rate ({base}→{target}) • High devaluation cost"
+        data_quality = "estimate"
+        typical_range = "-500 to -2000 bps"
+    elif base == 'ARS':
+        # ARS → any other currency (via USD)
+        # Cost = ARS→USD cost + USD→target cost
+        ars_to_usd_cost = interpolate_hedging_cost('ARS', tenor)  # Negative (you pay)
+        usd_to_target_cost = interpolate_hedging_cost(target, tenor) or 0
+        cost_bps = ars_to_usd_cost + usd_to_target_cost
+        instrument = "NDF + Cross-Currency"
+        notes = f"Via USD: ARS→USD ({ars_to_usd_cost:.0f} bps) + USD→{target} ({usd_to_target_cost:.0f} bps)"
+        data_quality = "estimate"
+        typical_range = target_info.get('typical_range', '')
+    elif target == 'ARS':
+        # Any currency → ARS (via USD)
+        # Cost = base→USD cost + USD→ARS cost (which is a benefit)
+        base_to_usd_cost = -interpolate_hedging_cost(base, tenor) if base != 'USD' else 0
+        usd_to_ars_benefit = -interpolate_hedging_cost('ARS', tenor)  # Flip: you receive premium
+        cost_bps = base_to_usd_cost + usd_to_ars_benefit
+        instrument = "Cross-Currency + NDF"
+        notes = f"Via USD: {base}→USD ({base_to_usd_cost:.0f} bps) + USD→ARS ({usd_to_ars_benefit:.0f} bps)"
+        data_quality = "estimate"
+        typical_range = "+500 to +2000 bps (devaluation premium)"
+    
     elif base in ['BRL', 'CNY']:
         cost_bps = base_cost
         instrument = f"{base} NDF / Futures"
