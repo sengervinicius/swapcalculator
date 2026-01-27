@@ -184,6 +184,205 @@
             font-weight: 500;
         }
         
+        /* Add Button */
+        .btn-add {
+            width: 28px;
+            height: 28px;
+            border-radius: 8px;
+            border: 1px solid var(--green);
+            background: transparent;
+            color: var(--green);
+            font-size: 1.2rem;
+            font-weight: 500;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+        }
+        
+        .btn-add:hover {
+            background: var(--green);
+            color: var(--bg-primary);
+            transform: scale(1.05);
+        }
+        
+        /* Multiple Targets */
+        .target-row {
+            padding-bottom: 16px;
+            margin-bottom: 16px;
+            border-bottom: 1px solid var(--border);
+            position: relative;
+        }
+        
+        .target-row:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+            padding-bottom: 0;
+        }
+        
+        .target-row .target-label {
+            position: absolute;
+            top: 0;
+            right: 0;
+            font-size: 0.65rem;
+            color: var(--text-muted);
+            font-family: 'JetBrains Mono', monospace;
+        }
+        
+        .input-with-remove {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+        
+        .input-with-remove .form-select {
+            flex: 1;
+        }
+        
+        .btn-remove {
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            border: 1px solid var(--red);
+            background: transparent;
+            color: var(--red);
+            font-size: 1rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+            flex-shrink: 0;
+        }
+        
+        .btn-remove:hover {
+            background: var(--red);
+            color: white;
+        }
+        
+        /* Chart Controls */
+        .chart-controls {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+        
+        .btn-add-curve {
+            padding: 6px 12px;
+            border-radius: 6px;
+            border: 1px solid var(--green);
+            background: transparent;
+            color: var(--green);
+            font-size: 0.75rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-family: 'Outfit', sans-serif;
+        }
+        
+        .btn-add-curve:hover {
+            background: var(--green);
+            color: var(--bg-primary);
+        }
+        
+        .additional-curves-container {
+            margin-bottom: 12px;
+            padding: 12px;
+            background: var(--bg-tertiary);
+            border-radius: 8px;
+            border: 1px solid var(--border);
+        }
+        
+        .additional-curves-row {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+        
+        .form-select-sm {
+            padding: 8px 12px;
+            font-size: 0.85rem;
+            flex: 1;
+        }
+        
+        .btn-add-sm, .btn-cancel-sm {
+            padding: 8px 14px;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border: none;
+        }
+        
+        .btn-add-sm {
+            background: var(--green);
+            color: var(--bg-primary);
+        }
+        
+        .btn-add-sm:hover {
+            background: var(--green-light);
+        }
+        
+        .btn-cancel-sm {
+            background: var(--bg-input);
+            color: var(--text-secondary);
+            border: 1px solid var(--border);
+        }
+        
+        .btn-cancel-sm:hover {
+            background: var(--border);
+        }
+        
+        /* Dynamic Legend */
+        .chart-legend {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            padding: 4px 8px;
+            background: var(--bg-tertiary);
+            border-radius: 4px;
+        }
+        
+        .legend-item.removable {
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .legend-item.removable:hover {
+            background: rgba(239, 68, 68, 0.2);
+        }
+        
+        .legend-item.removable::after {
+            content: '✕';
+            font-size: 0.65rem;
+            color: var(--text-muted);
+            margin-left: 4px;
+            opacity: 0;
+            transition: opacity 0.2s ease;
+        }
+        
+        .legend-item.removable:hover::after {
+            opacity: 1;
+            color: var(--red);
+        }
+        
+        .legend-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+        }
+        
         .card-body {
             padding: 22px;
         }
@@ -294,49 +493,121 @@
             to { opacity: 1; transform: translateY(0); }
         }
         
-        /* Metrics Grid */
-        .metrics-grid {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 1px;
-            background: var(--border);
+        /* Results Summary */
+        .results-summary {
+            background: var(--bg-secondary);
+            border-radius: 12px;
+            padding: 16px 20px;
+            margin-bottom: 20px;
+        }
+        
+        .summary-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 12px;
+        }
+        
+        .summary-title {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+        }
+        
+        .summary-value {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: var(--green);
+            font-family: 'JetBrains Mono', monospace;
+        }
+        
+        .summary-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.9rem;
+        }
+        
+        .summary-row span:first-child {
+            color: var(--text-secondary);
+        }
+        
+        .summary-row span:last-child {
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--text-primary);
+        }
+        
+        /* Comparison Table */
+        .comparison-table-wrapper {
+            background: var(--bg-secondary);
             border-radius: 12px;
             overflow: hidden;
             margin-bottom: 24px;
         }
         
-        .metric {
-            background: var(--bg-secondary);
-            padding: 24px 20px;
-            text-align: center;
+        .comparison-table {
+            width: 100%;
+            border-collapse: collapse;
         }
         
-        .metric-label {
-            font-size: 0.7rem;
+        .comparison-table th {
+            padding: 14px 16px;
+            text-align: left;
+            font-size: 0.75rem;
+            font-weight: 500;
             color: var(--text-muted);
             text-transform: uppercase;
-            letter-spacing: 0.08em;
-            margin-bottom: 10px;
+            letter-spacing: 0.06em;
+            background: var(--bg-tertiary);
+            border-bottom: 1px solid var(--border);
         }
         
-        .metric-value {
-            font-size: 1.8rem;
+        .comparison-table th:last-child,
+        .comparison-table td:last-child {
+            text-align: right;
+        }
+        
+        .comparison-table td {
+            padding: 16px;
+            font-size: 0.95rem;
+            border-bottom: 1px solid var(--border);
+        }
+        
+        .comparison-table tbody tr:last-child td {
+            border-bottom: none;
+        }
+        
+        .comparison-table tbody tr:hover {
+            background: var(--bg-tertiary);
+        }
+        
+        .comparison-table .currency-cell {
             font-weight: 600;
+            color: var(--text-primary);
+        }
+        
+        .comparison-table .rate-cell {
             font-family: 'JetBrains Mono', monospace;
+            color: var(--text-secondary);
+        }
+        
+        .comparison-table .hedged-cell {
+            font-family: 'JetBrains Mono', monospace;
+            font-weight: 600;
             color: var(--green);
-            letter-spacing: -0.02em;
+            font-size: 1.05rem;
         }
         
-        .metric-value .unit {
-            font-size: 0.9rem;
-            color: var(--text-muted);
-            font-weight: 400;
-            margin-left: 4px;
+        .comparison-table .total-cell {
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--text-primary);
         }
         
-        .metric.highlight {
-            background: var(--green-subtle);
-        }
+        .rate-positive { color: var(--green) !important; }
+        .rate-negative { color: var(--red) !important; }
         
         /* Chart Section */
         .chart-section {
@@ -606,15 +877,6 @@
                 grid-template-columns: 1fr;
                 gap: 16px;
             }
-            .metrics-grid {
-                grid-template-columns: repeat(2, 1fr);
-            }
-            .metric {
-                padding: 18px 14px;
-            }
-            .metric-value {
-                font-size: 1.4rem;
-            }
             .assumption-row {
                 grid-template-columns: 1fr auto;
                 gap: 12px;
@@ -622,12 +884,30 @@
             .assumption-source { display: none; }
             .card-body { padding: 18px; }
             .chart-container { height: 220px; }
-            .chart-legend { flex-wrap: wrap; gap: 10px; }
+            .chart-legend { flex-wrap: wrap; gap: 8px; }
+            
+            /* Comparison table mobile */
+            .comparison-table th,
+            .comparison-table td {
+                padding: 12px 10px;
+                font-size: 0.85rem;
+            }
+            .comparison-table .hedged-cell {
+                font-size: 0.95rem;
+            }
+            
+            /* Additional curves container */
+            .additional-curves-row {
+                flex-wrap: wrap;
+            }
+            .additional-curves-row .form-select-sm {
+                width: 100%;
+                margin-bottom: 8px;
+            }
         }
         
         @media (max-width: 480px) {
             .brand-text h1 { font-size: 1.2rem; }
-            .metrics-grid { grid-template-columns: 1fr; }
             .live-indicators {
                 grid-template-columns: repeat(4, 1fr);
             }
@@ -639,6 +919,12 @@
             .live-dot .dot {
                 width: 5px;
                 height: 5px;
+            }
+            
+            /* Hide some columns on very small screens */
+            .comparison-table th:nth-child(2),
+            .comparison-table td:nth-child(2) {
+                display: none;
             }
         }
     </style>
@@ -716,22 +1002,31 @@
             <div class="card">
                 <div class="card-header">
                     <span class="card-title">Target & Parameters</span>
+                    <button type="button" class="btn-add" id="addTargetBtn" title="Add another target currency">
+                        <span>+</span>
+                    </button>
                 </div>
                 <div class="card-body">
-                    <div class="form-row">
-                        <label class="form-label">Target Currency</label>
-                        <select class="form-select" id="targetCurrency" required>
-                            <option value="">Select currency...</option>
-                            <option value="BRL">BRL — Brazilian Real</option>
-                            <option value="USD" selected>USD — US Dollar</option>
-                            <option value="EUR">EUR — Euro</option>
-                            <option value="GBP">GBP — British Pound</option>
-                            <option value="CHF">CHF — Swiss Franc</option>
-                            <option value="JPY">JPY — Japanese Yen</option>
-                            <option value="CNY">CNY — Chinese Yuan</option>
-                            <option value="CAD">CAD — Canadian Dollar</option>
-                            <option value="AUD">AUD — Australian Dollar</option>
-                        </select>
+                    <div id="targetsContainer">
+                        <div class="target-row" data-target-id="1">
+                            <div class="form-row">
+                                <label class="form-label">Target Currency</label>
+                                <div class="input-with-remove">
+                                    <select class="form-select target-currency" required>
+                                        <option value="">Select currency...</option>
+                                        <option value="BRL">BRL — Brazilian Real</option>
+                                        <option value="USD" selected>USD — US Dollar</option>
+                                        <option value="EUR">EUR — Euro</option>
+                                        <option value="GBP">GBP — British Pound</option>
+                                        <option value="CHF">CHF — Swiss Franc</option>
+                                        <option value="JPY">JPY — Japanese Yen</option>
+                                        <option value="CNY">CNY — Chinese Yuan</option>
+                                        <option value="CAD">CAD — Canadian Dollar</option>
+                                        <option value="AUD">AUD — Australian Dollar</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                     
                     <div class="form-row">
@@ -743,7 +1038,7 @@
                     </div>
                     
                     <button type="button" class="btn-calculate" id="calculateBtn">
-                        Calculate Hedged Return
+                        Calculate Hedged Returns
                     </button>
                 </div>
             </div>
@@ -756,42 +1051,64 @@
                         <span class="card-badge" id="resultDate"></span>
                     </div>
                     <div class="card-body">
-                        <div class="metrics-grid">
-                            <div class="metric">
-                                <div class="metric-label">All-In Base</div>
-                                <div class="metric-value"><span id="metricAllIn">—</span><span class="unit">%</span></div>
+                        <!-- Results Summary -->
+                        <div class="results-summary" id="resultsSummary">
+                            <div class="summary-header">
+                                <span class="summary-title">Base Currency</span>
+                                <span class="summary-value" id="summaryBaseCurrency">—</span>
                             </div>
-                            <div class="metric highlight">
-                                <div class="metric-label">Hedged Return</div>
-                                <div class="metric-value"><span id="metricHedged">—</span><span class="unit">%</span></div>
+                            <div class="summary-row">
+                                <span>All-In Rate</span>
+                                <span id="summaryAllIn">—</span>
                             </div>
-                            <div class="metric">
-                                <div class="metric-label">Total Base</div>
-                                <div class="metric-value"><span id="metricTotalBase">—</span><span class="unit">%</span></div>
-                            </div>
-                            <div class="metric">
-                                <div class="metric-label">Total Target</div>
-                                <div class="metric-value"><span id="metricTotalTarget">—</span><span class="unit">%</span></div>
-                            </div>
+                        </div>
+                        
+                        <!-- Comparison Table -->
+                        <div class="comparison-table-wrapper">
+                            <table class="comparison-table" id="comparisonTable">
+                                <thead>
+                                    <tr>
+                                        <th>Target</th>
+                                        <th>Risk-Free Δ</th>
+                                        <th>Hedged Return</th>
+                                        <th>Total Return</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="comparisonBody">
+                                    <!-- Dynamic rows -->
+                                </tbody>
+                            </table>
                         </div>
                         
                         <!-- Yield Curve Chart -->
                         <div class="chart-section">
                             <div class="chart-header">
                                 <span class="chart-title">Risk-Free Yield Curves</span>
-                                <div class="chart-legend">
-                                    <div class="legend-item">
-                                        <span class="legend-dot" id="legendBase" style="background: #22c55e;"></span>
-                                        <span id="legendBaseLabel">Base</span>
-                                    </div>
-                                    <div class="legend-item">
-                                        <span class="legend-dot" id="legendTarget" style="background: #14b8a6;"></span>
-                                        <span id="legendTargetLabel">Target</span>
-                                    </div>
-                                    <div class="legend-item">
-                                        <span class="legend-dot" style="background: #eab308; width: 8px; height: 8px; border: 2px solid #eab308;"></span>
-                                        <span>Selected Tenor</span>
-                                    </div>
+                                <div class="chart-controls">
+                                    <button type="button" class="btn-add-curve" id="addCurveBtn" title="Add another curve">
+                                        <span>+ Add Curve</span>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="chart-legend" id="chartLegend">
+                                <!-- Dynamic legend items will be added here -->
+                            </div>
+                            <div class="additional-curves-container" id="additionalCurvesContainer" style="display: none;">
+                                <div class="additional-curves-row">
+                                    <select class="form-select form-select-sm" id="additionalCurveSelect">
+                                        <option value="">Select currency to add...</option>
+                                        <option value="BRL">BRL</option>
+                                        <option value="USD">USD</option>
+                                        <option value="EUR">EUR</option>
+                                        <option value="GBP">GBP</option>
+                                        <option value="CHF">CHF</option>
+                                        <option value="JPY">JPY</option>
+                                        <option value="CNY">CNY</option>
+                                        <option value="CAD">CAD</option>
+                                        <option value="AUD">AUD</option>
+                                    </select>
+                                    <button type="button" class="btn-add-sm" id="confirmAddCurve">Add</button>
+                                    <button type="button" class="btn-cancel-sm" id="cancelAddCurve">✕</button>
                                 </div>
                             </div>
                             <div class="chart-container">
@@ -830,6 +1147,22 @@
     <script>
         const API_BASE = window.location.origin + '/api';
         let yieldChart = null;
+        let targetCounter = 1;
+        let additionalCurves = []; // Extra curves added to chart (not for calculation)
+        let calculatedResults = []; // Store results for chart
+        
+        // Color palette for curves (different shades of green/teal)
+        const curveColors = [
+            '#22c55e', // green
+            '#14b8a6', // teal
+            '#06b6d4', // cyan
+            '#10b981', // emerald
+            '#84cc16', // lime
+            '#6ee7b7', // light emerald
+            '#2dd4bf', // light teal
+            '#a3e635', // light lime
+            '#4ade80', // light green
+        ];
         
         // Check live status
         async function checkStatus() {
@@ -885,6 +1218,83 @@
         
         document.getElementById('baseCurrency').addEventListener('change', loadIndexers);
         
+        // Add target currency
+        document.getElementById('addTargetBtn').addEventListener('click', () => {
+            targetCounter++;
+            const container = document.getElementById('targetsContainer');
+            const baseCurrency = document.getElementById('baseCurrency').value;
+            
+            const newTarget = document.createElement('div');
+            newTarget.className = 'target-row';
+            newTarget.dataset.targetId = targetCounter;
+            newTarget.innerHTML = `
+                <span class="target-label">Target #${targetCounter}</span>
+                <div class="form-row">
+                    <label class="form-label">Target Currency</label>
+                    <div class="input-with-remove">
+                        <select class="form-select target-currency" required>
+                            <option value="">Select currency...</option>
+                            <option value="BRL" ${baseCurrency === 'BRL' ? 'disabled' : ''}>BRL — Brazilian Real</option>
+                            <option value="USD" ${baseCurrency === 'USD' ? 'disabled' : ''}>USD — US Dollar</option>
+                            <option value="EUR" ${baseCurrency === 'EUR' ? 'disabled' : ''}>EUR — Euro</option>
+                            <option value="GBP" ${baseCurrency === 'GBP' ? 'disabled' : ''}>GBP — British Pound</option>
+                            <option value="CHF" ${baseCurrency === 'CHF' ? 'disabled' : ''}>CHF — Swiss Franc</option>
+                            <option value="JPY" ${baseCurrency === 'JPY' ? 'disabled' : ''}>JPY — Japanese Yen</option>
+                            <option value="CNY" ${baseCurrency === 'CNY' ? 'disabled' : ''}>CNY — Chinese Yuan</option>
+                            <option value="CAD" ${baseCurrency === 'CAD' ? 'disabled' : ''}>CAD — Canadian Dollar</option>
+                            <option value="AUD" ${baseCurrency === 'AUD' ? 'disabled' : ''}>AUD — Australian Dollar</option>
+                        </select>
+                        <button type="button" class="btn-remove" onclick="removeTarget(${targetCounter})">✕</button>
+                    </div>
+                </div>
+            `;
+            container.appendChild(newTarget);
+        });
+        
+        function removeTarget(id) {
+            const target = document.querySelector(`.target-row[data-target-id="${id}"]`);
+            if (target) target.remove();
+        }
+        
+        // Chart curve management
+        document.getElementById('addCurveBtn').addEventListener('click', () => {
+            document.getElementById('additionalCurvesContainer').style.display = 'block';
+        });
+        
+        document.getElementById('cancelAddCurve').addEventListener('click', () => {
+            document.getElementById('additionalCurvesContainer').style.display = 'none';
+            document.getElementById('additionalCurveSelect').value = '';
+        });
+        
+        document.getElementById('confirmAddCurve').addEventListener('click', async () => {
+            const select = document.getElementById('additionalCurveSelect');
+            const currency = select.value;
+            
+            if (!currency) return;
+            
+            // Check if already added
+            if (additionalCurves.includes(currency)) {
+                alert(`${currency} is already on the chart`);
+                return;
+            }
+            
+            additionalCurves.push(currency);
+            document.getElementById('additionalCurvesContainer').style.display = 'none';
+            select.value = '';
+            
+            // Refresh chart if we have results
+            if (calculatedResults.length > 0) {
+                await updateChart();
+            }
+        });
+        
+        function removeAdditionalCurve(currency) {
+            additionalCurves = additionalCurves.filter(c => c !== currency);
+            if (calculatedResults.length > 0) {
+                updateChart();
+            }
+        }
+        
         // Fetch yield curve data
         async function fetchCurve(currency) {
             try {
@@ -898,80 +1308,107 @@
             return null;
         }
         
-        // Update chart
-        async function updateChart(baseCcy, targetCcy, selectedTenor, baseRate, targetRate) {
-            const [baseCurve, targetCurve] = await Promise.all([
-                fetchCurve(baseCcy),
-                fetchCurve(targetCcy)
-            ]);
+        // Update chart with multiple curves
+        async function updateChart() {
+            const baseCcy = document.getElementById('baseCurrency').value;
+            const selectedTenor = parseFloat(document.getElementById('tenor').value);
             
-            if (!baseCurve || !targetCurve) return;
+            // Get all currencies to display
+            const targetCurrencies = calculatedResults.map(r => r.target_currency);
+            const allCurrencies = [baseCcy, ...targetCurrencies, ...additionalCurves];
+            const uniqueCurrencies = [...new Set(allCurrencies)];
             
-            // Update legend labels
-            document.getElementById('legendBaseLabel').textContent = baseCcy;
-            document.getElementById('legendTargetLabel').textContent = targetCcy;
+            // Fetch all curves
+            const curves = {};
+            for (const ccy of uniqueCurrencies) {
+                curves[ccy] = await fetchCurve(ccy);
+            }
             
-            const tenors = baseCurve.curve.map(p => p.tenor);
-            const baseRates = baseCurve.curve.map(p => p.rate);
-            const targetRates = targetCurve.curve.map(p => p.rate);
+            // Update legend
+            const legendContainer = document.getElementById('chartLegend');
+            legendContainer.innerHTML = '';
             
+            uniqueCurrencies.forEach((ccy, idx) => {
+                const color = curveColors[idx % curveColors.length];
+                const isAdditional = additionalCurves.includes(ccy);
+                const legendItem = document.createElement('div');
+                legendItem.className = 'legend-item' + (isAdditional ? ' removable' : '');
+                legendItem.innerHTML = `
+                    <span class="legend-dot" style="background: ${color};"></span>
+                    <span>${ccy}</span>
+                `;
+                if (isAdditional) {
+                    legendItem.onclick = () => removeAdditionalCurve(ccy);
+                    legendItem.title = 'Click to remove';
+                }
+                legendContainer.appendChild(legendItem);
+            });
+            
+            // Add tenor indicator to legend
+            const tenorLegend = document.createElement('div');
+            tenorLegend.className = 'legend-item';
+            tenorLegend.innerHTML = `
+                <span class="legend-dot" style="background: #eab308; width: 8px; height: 8px;"></span>
+                <span>Tenor (${selectedTenor}Y)</span>
+            `;
+            legendContainer.appendChild(tenorLegend);
+            
+            // Build chart datasets
             const ctx = document.getElementById('yieldCurveChart').getContext('2d');
             
             if (yieldChart) {
                 yieldChart.destroy();
             }
             
-            // Find selected tenor point for annotation
-            const selectedBaseRate = baseRate;
-            const selectedTargetRate = targetRate;
+            const tenors = [1, 2, 3, 5, 7, 10, 15, 20, 30];
+            const datasets = [];
+            
+            uniqueCurrencies.forEach((ccy, idx) => {
+                const curveData = curves[ccy];
+                if (!curveData) return;
+                
+                const color = curveColors[idx % curveColors.length];
+                const rates = tenors.map(t => {
+                    const point = curveData.curve.find(p => p.tenor === t);
+                    return point ? point.rate : null;
+                });
+                
+                datasets.push({
+                    label: ccy,
+                    data: rates,
+                    borderColor: color,
+                    backgroundColor: color + '20',
+                    borderWidth: 2,
+                    tension: 0.4,
+                    fill: false,
+                    pointRadius: 3,
+                    pointBackgroundColor: color,
+                    pointBorderColor: color
+                });
+            });
+            
+            // Add tenor marker
+            const tenorIndex = tenors.findIndex(t => Math.abs(t - selectedTenor) < 0.5);
+            if (tenorIndex >= 0) {
+                datasets.push({
+                    label: 'Selected Tenor',
+                    data: tenors.map((t, i) => i === tenorIndex ? datasets[0]?.data[i] || 0 : null),
+                    borderColor: '#eab308',
+                    backgroundColor: '#eab308',
+                    borderWidth: 0,
+                    pointRadius: tenors.map((t, i) => i === tenorIndex ? 10 : 0),
+                    pointBackgroundColor: '#eab308',
+                    pointBorderColor: '#0a0a0b',
+                    pointBorderWidth: 3,
+                    showLine: false
+                });
+            }
             
             yieldChart = new Chart(ctx, {
                 type: 'line',
                 data: {
                     labels: tenors.map(t => t + 'Y'),
-                    datasets: [
-                        {
-                            label: baseCcy,
-                            data: baseRates,
-                            borderColor: '#22c55e',
-                            backgroundColor: 'rgba(34, 197, 94, 0.1)',
-                            borderWidth: 2,
-                            tension: 0.4,
-                            fill: true,
-                            pointRadius: 3,
-                            pointBackgroundColor: '#22c55e',
-                            pointBorderColor: '#22c55e'
-                        },
-                        {
-                            label: targetCcy,
-                            data: targetRates,
-                            borderColor: '#14b8a6',
-                            backgroundColor: 'rgba(20, 184, 166, 0.1)',
-                            borderWidth: 2,
-                            tension: 0.4,
-                            fill: true,
-                            pointRadius: 3,
-                            pointBackgroundColor: '#14b8a6',
-                            pointBorderColor: '#14b8a6'
-                        },
-                        {
-                            label: 'Selected Points',
-                            data: tenors.map((t, i) => {
-                                if (Math.abs(t - selectedTenor) < 0.5) {
-                                    return baseRates[i];
-                                }
-                                return null;
-                            }),
-                            borderColor: '#eab308',
-                            backgroundColor: '#eab308',
-                            borderWidth: 0,
-                            pointRadius: tenors.map(t => Math.abs(t - selectedTenor) < 0.5 ? 8 : 0),
-                            pointBackgroundColor: '#eab308',
-                            pointBorderColor: '#0a0a0b',
-                            pointBorderWidth: 2,
-                            showLine: false
-                        }
-                    ]
+                    datasets: datasets
                 },
                 options: {
                     responsive: true,
@@ -981,9 +1418,7 @@
                         mode: 'index'
                     },
                     plugins: {
-                        legend: {
-                            display: false
-                        },
+                        legend: { display: false },
                         tooltip: {
                             backgroundColor: '#1a1a1d',
                             titleColor: '#fafafa',
@@ -994,40 +1429,23 @@
                             displayColors: true,
                             callbacks: {
                                 label: function(context) {
-                                    if (context.dataset.label === 'Selected Points') return null;
-                                    return `${context.dataset.label}: ${context.parsed.y.toFixed(2)}%`;
+                                    if (context.dataset.label === 'Selected Tenor') return null;
+                                    return `${context.dataset.label}: ${context.parsed.y?.toFixed(2) || '—'}%`;
                                 }
                             }
                         }
                     },
                     scales: {
                         x: {
-                            grid: {
-                                color: 'rgba(42, 42, 46, 0.5)',
-                                drawBorder: false
-                            },
-                            ticks: {
-                                color: '#71717a',
-                                font: {
-                                    family: "'JetBrains Mono', monospace",
-                                    size: 11
-                                }
-                            }
+                            grid: { color: 'rgba(42, 42, 46, 0.5)', drawBorder: false },
+                            ticks: { color: '#71717a', font: { family: "'JetBrains Mono', monospace", size: 11 } }
                         },
                         y: {
-                            grid: {
-                                color: 'rgba(42, 42, 46, 0.5)',
-                                drawBorder: false
-                            },
+                            grid: { color: 'rgba(42, 42, 46, 0.5)', drawBorder: false },
                             ticks: {
                                 color: '#71717a',
-                                font: {
-                                    family: "'JetBrains Mono', monospace",
-                                    size: 11
-                                },
-                                callback: function(value) {
-                                    return value.toFixed(1) + '%';
-                                }
+                                font: { family: "'JetBrains Mono', monospace", size: 11 },
+                                callback: function(value) { return value.toFixed(1) + '%'; }
                             }
                         }
                     }
@@ -1035,7 +1453,7 @@
             });
         }
         
-        // Calculate
+        // Calculate for all targets
         document.getElementById('calculateBtn').addEventListener('click', async () => {
             const btn = document.getElementById('calculateBtn');
             const errorBanner = document.getElementById('errorBanner');
@@ -1043,22 +1461,28 @@
             
             errorBanner.classList.remove('show');
             
-            const payload = {
-                base_currency: document.getElementById('baseCurrency').value,
-                base_indexer_key: document.getElementById('indexerKey').value,
-                target_currency: document.getElementById('targetCurrency').value,
-                tenor: parseFloat(document.getElementById('tenor').value),
-                spread: parseFloat(document.getElementById('spread').value)
-            };
+            const baseCurrency = document.getElementById('baseCurrency').value;
+            const baseIndexer = document.getElementById('indexerKey').value;
+            const tenor = parseFloat(document.getElementById('tenor').value);
+            const spread = parseFloat(document.getElementById('spread').value);
             
-            if (!payload.base_currency || !payload.base_indexer_key || !payload.target_currency) {
-                document.getElementById('errorText').textContent = 'Please complete all fields';
+            // Get all target currencies
+            const targetSelects = document.querySelectorAll('.target-currency');
+            const targetCurrencies = [];
+            targetSelects.forEach(sel => {
+                if (sel.value && sel.value !== baseCurrency) {
+                    targetCurrencies.push(sel.value);
+                }
+            });
+            
+            if (!baseCurrency || !baseIndexer) {
+                document.getElementById('errorText').textContent = 'Please select base currency and indexer';
                 errorBanner.classList.add('show');
                 return;
             }
             
-            if (payload.base_currency === payload.target_currency) {
-                document.getElementById('errorText').textContent = 'Base and target currencies must be different';
+            if (targetCurrencies.length === 0) {
+                document.getElementById('errorText').textContent = 'Please select at least one target currency';
                 errorBanner.classList.add('show');
                 return;
             }
@@ -1067,31 +1491,61 @@
             btn.innerHTML = '<span class="spinner">◐</span> Calculating...';
             
             try {
-                const res = await fetch(`${API_BASE}/calculate/hedged-return`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
+                calculatedResults = [];
+                let firstResult = null;
                 
-                if (!res.ok) {
-                    const err = await res.json();
-                    throw new Error(err.detail || 'Calculation failed');
+                // Calculate for each target
+                for (const targetCurrency of targetCurrencies) {
+                    const res = await fetch(`${API_BASE}/calculate/hedged-return`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            base_currency: baseCurrency,
+                            base_indexer_key: baseIndexer,
+                            target_currency: targetCurrency,
+                            tenor: tenor,
+                            spread: spread
+                        })
+                    });
+                    
+                    if (!res.ok) {
+                        const err = await res.json();
+                        throw new Error(`${targetCurrency}: ${err.detail || 'Calculation failed'}`);
+                    }
+                    
+                    const data = await res.json();
+                    data.target_currency = targetCurrency;
+                    calculatedResults.push(data);
+                    
+                    if (!firstResult) firstResult = data;
                 }
                 
-                const data = await res.json();
+                // Update summary
+                document.getElementById('summaryBaseCurrency').textContent = baseCurrency;
+                document.getElementById('summaryAllIn').textContent = firstResult.all_in_base_pp.toFixed(2) + '%';
+                document.getElementById('resultDate').textContent = firstResult.as_of_date;
                 
-                // Update metrics
-                document.getElementById('metricAllIn').textContent = data.all_in_base_pp.toFixed(2);
-                document.getElementById('metricHedged').textContent = data.usd_equiv_pp.toFixed(2);
-                document.getElementById('metricTotalBase').textContent = data.total_return_base_pp.toFixed(2);
-                document.getElementById('metricTotalTarget').textContent = data.total_return_target_pp.toFixed(2);
-                document.getElementById('resultDate').textContent = data.as_of_date;
+                // Build comparison table
+                const tbody = document.getElementById('comparisonBody');
+                tbody.innerHTML = '';
                 
-                // Assumptions
+                calculatedResults.forEach(result => {
+                    const rfDelta = result.risk_free_target - result.risk_free_base;
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td class="currency-cell">${result.target_currency}</td>
+                        <td class="rate-cell ${rfDelta >= 0 ? 'rate-negative' : 'rate-positive'}">${rfDelta >= 0 ? '+' : ''}${rfDelta.toFixed(2)}%</td>
+                        <td class="hedged-cell">${result.usd_equiv_pp.toFixed(2)}%</td>
+                        <td class="total-cell">${result.total_return_target_pp.toFixed(2)}%</td>
+                    `;
+                    tbody.appendChild(row);
+                });
+                
+                // Update assumptions (from first result)
                 const assumptionsList = document.getElementById('assumptionsList');
                 assumptionsList.innerHTML = '';
                 
-                data.assumptions.forEach(a => {
+                firstResult.assumptions.forEach(a => {
                     const isLive = a.source_name === 'Live';
                     const row = document.createElement('div');
                     row.className = 'assumption-row';
@@ -1110,7 +1564,7 @@
                 const statusMessages = document.getElementById('statusMessages');
                 statusMessages.innerHTML = '';
                 
-                data.warnings.forEach(w => {
+                firstResult.warnings.forEach(w => {
                     const div = document.createElement('div');
                     const isWarning = w.includes('⚠️');
                     div.className = 'status-message ' + (isWarning ? 'warning' : 'success');
@@ -1119,13 +1573,7 @@
                 });
                 
                 // Update chart
-                await updateChart(
-                    payload.base_currency,
-                    payload.target_currency,
-                    payload.tenor,
-                    data.risk_free_base,
-                    data.risk_free_target
-                );
+                await updateChart();
                 
                 resultsCard.classList.add('show');
                 resultsCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -1136,7 +1584,7 @@
                 resultsCard.classList.remove('show');
             } finally {
                 btn.disabled = false;
-                btn.innerHTML = 'Calculate Hedged Return';
+                btn.innerHTML = 'Calculate Hedged Returns';
             }
         });
         
