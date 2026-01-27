@@ -468,6 +468,28 @@
             transition: all 0.2s ease;
         }
         
+        /* Number input spinner styling */
+        .form-input[type="number"] {
+            -moz-appearance: textfield;
+        }
+        
+        .form-input[type="number"]::-webkit-outer-spin-button,
+        .form-input[type="number"]::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+            background: transparent;
+        }
+        
+        /* Custom number input with buttons */
+        .input-with-unit {
+            position: relative;
+        }
+        
+        .input-with-unit .form-input[type="number"] {
+            padding-right: 60px;
+            -moz-appearance: textfield;
+        }
+        
         .form-select {
             cursor: pointer;
             appearance: none;
@@ -534,8 +556,6 @@
             color: var(--text-primary);
         }
         
-        .input-with-unit { position: relative; }
-        .input-with-unit .form-input { padding-right: 60px; }
         .input-unit {
             position: absolute;
             right: 16px;
@@ -1006,13 +1026,11 @@
             color: var(--green);
         }
         
-        /* Hedging cost assumption row */
+        /* Hedging cost in assumptions - matches other rows but with accent */
         .assumption-row.hedging-cost-assumption {
-            background: var(--bg-tertiary);
-            margin: 4px -12px;
-            padding: 10px 12px;
-            border-radius: 6px;
-            border-left: 3px solid var(--yellow);
+            border-top: 1px dashed var(--border);
+            padding-top: 12px;
+            margin-top: 8px;
         }
         
         .assumption-row.hedging-cost-assumption .assumption-value.negative {
@@ -1025,16 +1043,17 @@
         
         /* Final total row in assumptions */
         .assumption-row.assumption-total {
-            background: var(--green-subtle);
-            margin: 8px -12px -8px;
-            padding: 12px 12px;
-            border-radius: 0 0 8px 8px;
-            border-top: 1px solid var(--green);
+            border-top: 1px solid var(--border);
+            padding-top: 12px;
+            margin-top: 8px;
+        }
+        
+        .assumption-row.assumption-total .assumption-name {
+            color: var(--green);
         }
         
         .assumption-row.assumption-total .assumption-value.highlight {
             color: var(--green);
-            font-size: 1.1rem;
             font-weight: 700;
         }
         
@@ -1554,7 +1573,7 @@
                         <!-- Comparison Table -->
                         <div class="comparison-table-wrapper">
                             <table class="comparison-table" id="comparisonTable">
-                                <thead>
+                                <thead id="comparisonHead">
                                     <tr>
                                         <th>Target</th>
                                         <th>Risk-Free Δ</th>
@@ -2175,7 +2194,33 @@
                 document.getElementById('summaryAllIn').textContent = firstResult.all_in_base_pp.toFixed(2) + '%';
                 document.getElementById('resultDate').textContent = firstResult.as_of_date;
                 
-                // Build comparison table
+                // Check if any result has hedging cost
+                const anyHasHedgingCost = calculatedResults.some(r => r.hedging_cost_bps !== null && r.hedging_cost_bps !== undefined);
+                
+                // Update table header based on whether hedging cost is included
+                const thead = document.getElementById('comparisonHead');
+                if (anyHasHedgingCost) {
+                    thead.innerHTML = `
+                        <tr>
+                            <th>Target</th>
+                            <th>Risk-Free Δ</th>
+                            <th>Hedged Return</th>
+                            <th>Hedge Cost</th>
+                            <th>Net Return</th>
+                        </tr>
+                    `;
+                } else {
+                    thead.innerHTML = `
+                        <tr>
+                            <th>Target</th>
+                            <th>Risk-Free Δ</th>
+                            <th>Hedged Return</th>
+                            <th>Total Return</th>
+                        </tr>
+                    `;
+                }
+                
+                // Build comparison table rows
                 const tbody = document.getElementById('comparisonBody');
                 tbody.innerHTML = '';
                 
@@ -2184,15 +2229,29 @@
                     const hasHedgingCost = result.hedging_cost_bps !== null && result.hedging_cost_bps !== undefined;
                     
                     const row = document.createElement('tr');
-                    row.innerHTML = `
-                        <td class="currency-cell">${result.target_currency}</td>
-                        <td class="rate-cell ${rfDelta >= 0 ? 'rate-negative' : 'rate-positive'}">${rfDelta >= 0 ? '+' : ''}${rfDelta.toFixed(2)}%</td>
-                        <td class="hedged-cell">
-                            ${result.hedged_return_pp.toFixed(2)}%
-                            ${hasHedgingCost ? `<span class="hedging-cost-badge ${result.hedging_cost_bps >= 0 ? 'positive' : 'negative'}">${result.hedging_cost_bps >= 0 ? '+' : ''}${result.hedging_cost_bps.toFixed(0)}bps</span>` : ''}
-                        </td>
-                        <td class="total-cell">${result.total_return_target_pp.toFixed(2)}%</td>
-                    `;
+                    
+                    if (anyHasHedgingCost) {
+                        // 5-column layout: Target | RF Delta | Hedged Return (before cost) | Hedge Cost | Net Return
+                        const hedgeCostDisplay = hasHedgingCost 
+                            ? `<span class="${result.hedging_cost_bps >= 0 ? 'rate-positive' : 'rate-negative'}">${result.hedging_cost_bps >= 0 ? '+' : ''}${result.hedging_cost_bps.toFixed(0)} bps</span>`
+                            : '—';
+                        
+                        row.innerHTML = `
+                            <td class="currency-cell">${result.target_currency}</td>
+                            <td class="rate-cell ${rfDelta >= 0 ? 'rate-negative' : 'rate-positive'}">${rfDelta >= 0 ? '+' : ''}${rfDelta.toFixed(2)}%</td>
+                            <td class="rate-cell">${result.usd_equiv_pp.toFixed(2)}%</td>
+                            <td class="rate-cell">${hedgeCostDisplay}</td>
+                            <td class="hedged-cell">${result.hedged_return_pp.toFixed(2)}%</td>
+                        `;
+                    } else {
+                        // 4-column layout: Target | RF Delta | Hedged Return | Total Return
+                        row.innerHTML = `
+                            <td class="currency-cell">${result.target_currency}</td>
+                            <td class="rate-cell ${rfDelta >= 0 ? 'rate-negative' : 'rate-positive'}">${rfDelta >= 0 ? '+' : ''}${rfDelta.toFixed(2)}%</td>
+                            <td class="hedged-cell">${result.hedged_return_pp.toFixed(2)}%</td>
+                            <td class="total-cell">${result.total_return_target_pp.toFixed(2)}%</td>
+                        `;
+                    }
                     tbody.appendChild(row);
                 });
                 
@@ -2221,7 +2280,7 @@
                     
                     row.innerHTML = `
                         <span class="assumption-name">
-                            ${isHedgingCost ? '→ ' : ''}${a.name.replace(' [Live]', '')}
+                            ${a.name.replace(' [Live]', '')}
                             ${isLive ? '<span class="live-tag">Live</span>' : ''}
                         </span>
                         <span class="assumption-source">${a.source_name}</span>
@@ -2230,15 +2289,15 @@
                     assumptionsList.appendChild(row);
                 });
                 
-                // Add final hedged return line if hedging cost was applied
-                const hasHedgingCost = firstResult.hedging_cost_bps !== null && firstResult.hedging_cost_bps !== undefined;
-                if (hasHedgingCost) {
+                // Add final net return line if hedging cost was applied
+                const anyHasHedgingCostAssumptions = firstResult.hedging_cost_bps !== null && firstResult.hedging_cost_bps !== undefined;
+                if (anyHasHedgingCostAssumptions) {
                     const finalRow = document.createElement('div');
                     finalRow.className = 'assumption-row assumption-total';
                     finalRow.innerHTML = `
-                        <span class="assumption-name"><strong>= Net Hedged Return</strong></span>
-                        <span class="assumption-source"></span>
-                        <span class="assumption-value highlight">${firstResult.hedged_return_pp.toFixed(2)}%</span>
+                        <span class="assumption-name">Net Hedged Return</span>
+                        <span class="assumption-source">Calculated</span>
+                        <span class="assumption-value highlight">${firstResult.hedged_return_pp.toFixed(4)}%</span>
                     `;
                     assumptionsList.appendChild(finalRow);
                 }
