@@ -215,23 +215,39 @@ FALLBACK_RISK_FREE = {
 
 # ============================================================================
 # HEDGING COST / CROSS-CURRENCY BASIS (in bps)
-# Negative = more expensive to hedge INTO that currency from USD
-# For BRL, this represents NDF implied cost
-# Reference data as of Jan 2025 - typical ranges
+# 
+# For BRL: Hedge Cost = Cupom Cambial - SOFR
+#   - Cupom Cambial: Implied USD rate in Brazil (from B3 futures/forwards)
+#   - SOFR: Actual USD overnight rate
+#   - If Cupom Cambial > SOFR → BENEFIT (you gain from hedging)
+#   - If Cupom Cambial < SOFR → COST (you pay to hedge)
+#
+# The cupom cambial already includes the "convertibility premium" - the cost
+# of USD being trapped in Brazil vs. offshore USD.
+#
+# For G10 currencies: Use cross-currency basis swap spreads
 # ============================================================================
 
+# Fallback values - ONLY used if live data fetch fails
+# These are conservative estimates and should be replaced by live data
 FALLBACK_HEDGING_COST = {
-    # vs USD basis (bps) - by tenor in years
-    'USD': {1: 0, 2: 0, 3: 0, 5: 0, 10: 0},  # USD vs USD = 0
-    'EUR': {1: -25, 2: -22, 3: -20, 5: -18, 10: -15},  # EUR/USD basis
-    'GBP': {1: -12, 2: -10, 3: -8, 5: -6, 10: -5},   # GBP/USD basis
-    'JPY': {1: -45, 2: -40, 3: -35, 5: -30, 10: -25},  # JPY/USD basis (typically wider)
-    'CHF': {1: -35, 2: -30, 3: -28, 5: -25, 10: -20},  # CHF/USD basis
-    'CAD': {1: -8, 2: -6, 3: -5, 5: -4, 10: -3},    # CAD/USD basis (usually tight)
-    'AUD': {1: 8, 2: 10, 3: 12, 5: 15, 10: 18},     # AUD/USD basis (often positive!)
-    'BRL': {1: -120, 2: -150, 3: -180, 5: -200, 10: -220},  # BRL NDF implied cost
-    'CNY': {1: -80, 2: -100, 3: -120, 5: -140, 10: -160},   # CNY NDF implied cost
+    # vs USD basis (bps) - G10 cross-currency basis spreads
+    'USD': {1: 0, 2: 0, 3: 0, 5: 0, 10: 0},
+    'EUR': {1: -25, 2: -22, 3: -20, 5: -18, 10: -15},
+    'GBP': {1: -12, 2: -10, 3: -8, 5: -6, 10: -5},
+    'JPY': {1: -45, 2: -40, 3: -35, 5: -30, 10: -25},
+    'CHF': {1: -35, 2: -30, 3: -28, 5: -25, 10: -20},
+    'CAD': {1: -8, 2: -6, 3: -5, 5: -4, 10: -3},
+    'AUD': {1: 8, 2: 10, 3: 12, 5: 15, 10: 18},
+    # BRL: Fallback only - prefer live B3 cupom cambial data
+    # These are approximate ranges when live data unavailable
+    'BRL': {1: 40, 2: 50, 3: 60, 5: 75, 10: 100},  # Positive = benefit going USD→BRL
+    'CNY': {1: -60, 2: -70, 3: -80, 5: -90, 10: -100},
 }
+
+# Cupom Cambial cache - stores live data from B3
+_cupom_cambial_cache: Dict[str, tuple] = {}
+_cupom_cambial_cache_ttl = 3600  # 1 hour
 
 # Hedging cost descriptions for UI
 HEDGING_COST_INFO = {
@@ -242,7 +258,11 @@ HEDGING_COST_INFO = {
     'CHF': {'type': 'deliverable', 'instrument': 'Cross-Currency Basis Swap', 'notes': 'CHF/USD xccy basis'},
     'CAD': {'type': 'deliverable', 'instrument': 'Cross-Currency Basis Swap', 'notes': 'CAD/USD xccy basis - usually tight'},
     'AUD': {'type': 'deliverable', 'instrument': 'Cross-Currency Basis Swap', 'notes': 'AUD/USD xccy basis - often positive'},
-    'BRL': {'type': 'ndf', 'instrument': 'Non-Deliverable Forward (NDF)', 'notes': 'BRL/USD NDF implied cost - restricted currency'},
+    'BRL': {
+        'type': 'futures', 
+        'instrument': 'DDI Futures / FRC (FRA de Cupom)', 
+        'notes': 'Live Cupom Cambial from B3 - Formula: (Cupom Cambial - SOFR) × 100'
+    },
     'CNY': {'type': 'ndf', 'instrument': 'Non-Deliverable Forward (NDF)', 'notes': 'CNY/USD NDF implied cost - restricted currency'},
 }
 
@@ -288,6 +308,126 @@ class BCBClient:
     async def get_ipca(self) -> Optional[float]:
         """Get latest IPCA (monthly)"""
         return await self.get_series_latest(433)
+
+
+class B3Client:
+    """
+    Client for B3 (Brasil, Bolsa, Balcão) market data.
+    Fetches Cupom Cambial (DOC curve) - the implied USD rate in Brazil.
+    
+    Formula for hedge cost/benefit (USD → BRL):
+        Hedge Benefit (bps) = (Cupom Cambial - SOFR) * 100
+    
+    Data source: B3 "Taxas Referenciais" - FREE, no auth needed!
+    URL: https://www2.bmf.com.br/pages/portal/bmfbovespa/boletim1/txref1.asp
+    """
+    
+    B3_URL = "https://www2.bmf.com.br/pages/portal/bmfbovespa/boletim1/txref1.asp"
+    
+    async def get_cupom_cambial_curve(self) -> Optional[Dict[int, float]]:
+        """
+        Fetch the Cupom Limpo (DOC) curve from B3.
+        Returns dict mapping days_corridos -> rate (% p.a. linear 360)
+        """
+        if not HTTPX_AVAILABLE:
+            return None
+        
+        cache_key = "b3_cupom_limpo"
+        cached = cache.get(cache_key)
+        if cached is not None:
+            return cached
+        
+        try:
+            # Fetch Cupom Limpo page
+            params = {"idioma": "P", "Taxa": "Cupom limpo"}
+            
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                response = await client.get(self.B3_URL, params=params)
+                
+                if response.status_code == 200:
+                    # Parse the HTML table
+                    curve = self._parse_b3_rate_table(response.text)
+                    if curve:
+                        cache.set(cache_key, curve)
+                        logger.info(f"✅ B3 Cupom Cambial: {len(curve)} vertices fetched")
+                        return curve
+        except Exception as e:
+            logger.error(f"B3 API error: {e}")
+        
+        return None
+    
+    def _parse_b3_rate_table(self, html: str) -> Optional[Dict[int, float]]:
+        """Parse B3's rate table HTML to extract the curve"""
+        import re
+        
+        curve = {}
+        
+        # Look for table rows with pattern: days | rate252 | rate360
+        # The pattern in B3 tables: number | number,decimal | number,decimal
+        pattern = r'(\d+)\s*\|\s*(\d+[,\.]\d+)\s*\|\s*(\d+[,\.]\d+)'
+        
+        matches = re.findall(pattern, html)
+        
+        for match in matches:
+            try:
+                days = int(match[0])
+                # Use the 360-day linear rate (column 3) for cupom cambial
+                rate_str = match[2].replace(',', '.')
+                rate = float(rate_str)
+                curve[days] = rate
+            except (ValueError, IndexError):
+                continue
+        
+        # If regex didn't work, try simpler line-by-line parsing
+        if not curve:
+            lines = html.split('\n')
+            for line in lines:
+                # Look for lines that look like: "360 | 5.23 | 5.10"
+                parts = line.strip().split('|')
+                if len(parts) >= 3:
+                    try:
+                        days = int(parts[0].strip())
+                        rate_str = parts[2].strip().replace(',', '.')
+                        rate = float(rate_str)
+                        if 1 <= days <= 10000 and 0 <= rate <= 50:
+                            curve[days] = rate
+                    except (ValueError, IndexError):
+                        continue
+        
+        return curve if curve else None
+    
+    def interpolate_cupom_cambial(self, curve: Dict[int, float], target_days: int) -> Optional[float]:
+        """Interpolate cupom cambial rate for a specific number of days"""
+        if not curve:
+            return None
+        
+        days_list = sorted(curve.keys())
+        
+        # Edge cases
+        if target_days <= days_list[0]:
+            return curve[days_list[0]]
+        if target_days >= days_list[-1]:
+            return curve[days_list[-1]]
+        
+        # Linear interpolation
+        for i in range(len(days_list) - 1):
+            d1, d2 = days_list[i], days_list[i + 1]
+            if d1 <= target_days <= d2:
+                r1, r2 = curve[d1], curve[d2]
+                return r1 + (r2 - r1) * (target_days - d1) / (d2 - d1)
+        
+        return None
+    
+    async def get_cupom_cambial_for_tenor(self, tenor_years: float) -> Optional[float]:
+        """Get interpolated cupom cambial rate for a given tenor in years"""
+        curve = await self.get_cupom_cambial_curve()
+        if not curve:
+            return None
+        
+        # Convert years to days (using 360 day year for cupom cambial convention)
+        target_days = int(tenor_years * 360)
+        
+        return self.interpolate_cupom_cambial(curve, target_days)
 
 
 class FREDClient:
@@ -975,15 +1115,78 @@ def interpolate_hedging_cost(currency: str, tenor: float) -> Optional[float]:
     return None
 
 
-def get_hedging_cost(base_currency: str, target_currency: str, tenor: float) -> dict:
+async def get_hedging_cost_async(base_currency: str, target_currency: str, tenor: float) -> dict:
     """
-    Calculate hedging cost between two currencies.
-    Returns cost in bps and metadata about the source.
+    Calculate hedging cost between two currencies using LIVE market data.
     
-    Logic:
-    - If hedging FROM BRL TO another currency: use BRL NDF cost (negative = cost to hedge)
-    - If hedging TO BRL FROM another currency: use inverted BRL NDF cost
-    - For developed market pairs: combine basis (e.g., EUR->GBP = EUR/USD - GBP/USD)
+    For BRL: Fetches live Cupom Cambial from B3 and SOFR from FRED.
+    Formula: Hedge Benefit (bps) = (Cupom Cambial - SOFR) * 100
+    
+    For G10 currencies: Uses cross-currency basis spreads (fallback for now).
+    
+    Returns cost in bps and metadata about the source.
+    Positive bps = BENEFIT (you gain from hedging)
+    Negative bps = COST (you pay to hedge)
+    """
+    base = base_currency.upper()
+    target = target_currency.upper()
+    
+    # Same currency = no cost
+    if base == target:
+        return {
+            "cost_bps": 0,
+            "source": "N/A",
+            "is_live": False,
+            "instrument": "None",
+            "notes": "Same currency pair"
+        }
+    
+    # Special handling for BRL - use live B3 + FRED data
+    if (base == 'USD' and target == 'BRL') or (base == 'BRL' and target == 'USD'):
+        try:
+            b3_client = B3Client()
+            fred_client = FREDClient()
+            
+            # Get Cupom Cambial from B3
+            cupom_cambial = await b3_client.get_cupom_cambial_for_tenor(tenor)
+            
+            # Get SOFR from FRED
+            sofr = await fred_client.get_sofr()
+            
+            if cupom_cambial is not None and sofr is not None:
+                # Calculate hedge benefit: Cupom Cambial - SOFR
+                # This is the implied USD rate in Brazil minus actual USD rate
+                hedge_benefit_pp = cupom_cambial - sofr  # In percentage points
+                hedge_benefit_bps = hedge_benefit_pp * 100  # Convert to bps
+                
+                # Direction adjustment
+                # USD → BRL: Positive = benefit (you receive the spread)
+                # BRL → USD: Negative = cost (you pay the spread)
+                if base == 'BRL':
+                    hedge_benefit_bps = -hedge_benefit_bps
+                
+                return {
+                    "cost_bps": round(hedge_benefit_bps, 1),
+                    "source": "B3 + FRED",
+                    "is_live": True,
+                    "instrument": "DDI Futures / FRC",
+                    "notes": f"Cupom Cambial ({cupom_cambial:.2f}%) - SOFR ({sofr:.2f}%)",
+                    "cupom_cambial": round(cupom_cambial, 4),
+                    "sofr": round(sofr, 4),
+                    "calculation": f"({cupom_cambial:.2f} - {sofr:.2f}) × 100 = {hedge_benefit_bps:.1f} bps"
+                }
+        except Exception as e:
+            logger.error(f"Live BRL hedging cost fetch failed: {e}")
+    
+    # Fallback to static data for BRL if live fetch failed
+    # Or for other currencies (G10 xccy basis)
+    return get_hedging_cost_sync(base_currency, target_currency, tenor)
+
+
+def get_hedging_cost_sync(base_currency: str, target_currency: str, tenor: float) -> dict:
+    """
+    Synchronous fallback for hedging cost calculation.
+    Uses static reference data when live data is unavailable.
     """
     base = base_currency.upper()
     target = target_currency.upper()
@@ -1002,40 +1205,50 @@ def get_hedging_cost(base_currency: str, target_currency: str, tenor: float) -> 
     base_info = HEDGING_COST_INFO.get(base, {'type': 'unknown', 'instrument': 'Unknown', 'notes': ''})
     target_info = HEDGING_COST_INFO.get(target, {'type': 'unknown', 'instrument': 'Unknown', 'notes': ''})
     
-    # Calculate cost
+    # Get costs from lookup
     base_cost = interpolate_hedging_cost(base, tenor) or 0
     target_cost = interpolate_hedging_cost(target, tenor) or 0
     
-    # The hedging cost from base to target is the difference
-    # Negative cost = more expensive to hedge into target
-    # If base is BRL (NDF), we pay that cost to convert out
-    # If target is BRL (NDF), we pay that cost to convert in
-    
-    if base in ['BRL', 'CNY']:
-        # Hedging FROM restricted currency - we pay the NDF cost
-        cost_bps = base_cost  # Already negative
-        instrument = f"{base} NDF"
-        notes = f"{base} NDF implied cost to hedge into {target}"
+    # Calculate hedging cost based on direction
+    if base == 'USD' and target == 'BRL':
+        # USD → BRL: Use BRL fallback directly (stored as positive = benefit)
+        cost_bps = target_cost
+        instrument = "DDI Futures / FRC"
+        notes = f"Cupom cambial estimate ({base}→{target})"
+    elif base == 'BRL' and target == 'USD':
+        # BRL → USD: Invert (you pay instead of receive)
+        cost_bps = -interpolate_hedging_cost('BRL', tenor)
+        instrument = "DDI Futures / FRC"
+        notes = f"Cupom cambial estimate ({base}→{target})"
+    elif base in ['BRL', 'CNY']:
+        cost_bps = base_cost
+        instrument = f"{base} NDF / Futures"
+        notes = f"Estimate ({base}→{target})"
     elif target in ['BRL', 'CNY']:
-        # Hedging INTO restricted currency - inverted cost
-        cost_bps = -target_cost  # Invert the sign
-        instrument = f"{target} NDF"
-        notes = f"{target} NDF implied cost when hedging from {base}"
+        cost_bps = -target_cost
+        instrument = f"{target} NDF / Futures"
+        notes = f"Estimate ({base}→{target})"
     else:
-        # Both are deliverable - use cross-currency basis difference
+        # Both are G10/deliverable - use cross-currency basis difference
         cost_bps = target_cost - base_cost
         instrument = "Cross-Currency Basis Swap"
-        notes = f"{base}/{target} xccy basis ({base}/USD vs {target}/USD)"
+        notes = f"{base}/{target} xccy basis"
     
     return {
         "cost_bps": round(cost_bps, 1),
-        "source": "Reference",
-        "is_live": False,  # We don't have live basis data yet
+        "source": "Reference (fallback)",
+        "is_live": False,
         "instrument": instrument,
         "notes": notes,
         "base_type": base_info.get('type', 'unknown'),
         "target_type": target_info.get('type', 'unknown')
     }
+
+
+# Keep sync version for non-async contexts
+def get_hedging_cost(base_currency: str, target_currency: str, tenor: float) -> dict:
+    """Synchronous wrapper - use get_hedging_cost_async in async contexts"""
+    return get_hedging_cost_sync(base_currency, target_currency, tenor)
 
 
 # ============================================================================
@@ -1071,15 +1284,18 @@ def config_status():
     }
 
 @app.get("/api/hedging-cost/{base_currency}/{target_currency}", tags=["Reference Data"])
-def get_hedging_cost_endpoint(base_currency: str, target_currency: str, tenor: float = 5):
+async def get_hedging_cost_endpoint(base_currency: str, target_currency: str, tenor: float = 5):
     """
     Get hedging cost (cross-currency basis or NDF cost) for a currency pair.
     
-    Returns cost in basis points (bps) and metadata.
-    - Negative cost = more expensive to hedge into target currency
-    - Positive cost = hedging benefit (rare, e.g., AUD)
+    **For USD ↔ BRL**: Fetches LIVE data from B3 (Cupom Cambial) and FRED (SOFR)
+    Formula: Hedge Benefit = Cupom Cambial - SOFR
     
-    For restricted currencies (BRL, CNY): Uses NDF implied costs
+    Returns cost in basis points (bps) and metadata.
+    - Positive cost = hedging BENEFIT (you gain, e.g., USD→BRL typically positive)
+    - Negative cost = hedging COST (you pay)
+    
+    For restricted currencies (BRL, CNY): Uses NDF/Futures implied costs
     For deliverable currencies: Uses cross-currency basis swap spreads
     """
     base = base_currency.upper()
@@ -1091,7 +1307,8 @@ def get_hedging_cost_endpoint(base_currency: str, target_currency: str, tenor: f
     if target not in supported:
         raise HTTPException(status_code=404, detail=f"Target currency {target} not supported")
     
-    result = get_hedging_cost(base, target, tenor)
+    # Use async version to get live B3 data for BRL
+    result = await get_hedging_cost_async(base, target, tenor)
     result['base_currency'] = base
     result['target_currency'] = target
     result['tenor'] = tenor
@@ -1100,7 +1317,7 @@ def get_hedging_cost_endpoint(base_currency: str, target_currency: str, tenor: f
     return result
 
 @app.get("/api/hedging-cost/all", tags=["Reference Data"])
-def get_all_hedging_costs(tenor: float = 5):
+async def get_all_hedging_costs(tenor: float = 5):
     """Get hedging cost matrix for all supported currency pairs"""
     supported = ['BRL', 'USD', 'EUR', 'GBP', 'CHF', 'JPY', 'CNY', 'CAD', 'AUD']
     matrix = {}
@@ -1109,14 +1326,18 @@ def get_all_hedging_costs(tenor: float = 5):
         matrix[base] = {}
         for target in supported:
             if base != target:
-                cost_data = get_hedging_cost(base, target, tenor)
+                # Use async for BRL pairs to get live data
+                if 'BRL' in [base, target]:
+                    cost_data = await get_hedging_cost_async(base, target, tenor)
+                else:
+                    cost_data = get_hedging_cost_sync(base, target, tenor)
                 matrix[base][target] = cost_data['cost_bps']
     
     return {
         "tenor": tenor,
         "matrix": matrix,
         "as_of": datetime.now().strftime("%Y-%m-%d"),
-        "notes": "Cost in bps. Negative = more expensive to hedge into target."
+        "notes": "Cost in bps. Positive = benefit, Negative = cost. BRL pairs use LIVE B3 data."
     }
 
 @app.get("/api/indexers", tags=["Reference Data"])
@@ -1135,6 +1356,76 @@ async def get_indexers_by_currency(currency: str):
     
     indexers = await get_live_indexers(currency)
     return {"currency": currency, "indexers": [IndexerResponse(**idx) for idx in indexers]}
+
+
+@app.get("/api/b3/cupom-cambial", tags=["Brazil Market Data"])
+async def get_b3_cupom_cambial(tenor: float = 5):
+    """
+    Get live Cupom Cambial (DOC curve) from B3.
+    
+    The Cupom Cambial is the implied USD rate in Brazil, derived from
+    DDI futures and FX forwards. It represents what a Brazilian investor
+    would earn on USD held within Brazil's financial system.
+    
+    This is the key input for calculating USD→BRL hedge cost/benefit:
+    Hedge Benefit = Cupom Cambial - SOFR
+    
+    **Data Source**: B3 (Brasil, Bolsa, Balcão) - FREE, no authentication
+    **Update Frequency**: Daily, after market close (~18:00 BRT)
+    """
+    b3_client = B3Client()
+    fred_client = FREDClient()
+    
+    try:
+        # Fetch full curve
+        curve = await b3_client.get_cupom_cambial_curve()
+        
+        # Get rate for specific tenor
+        rate_for_tenor = await b3_client.get_cupom_cambial_for_tenor(tenor)
+        
+        # Get SOFR for comparison
+        sofr = await fred_client.get_sofr()
+        
+        # Calculate hedge benefit if both available
+        hedge_benefit_bps = None
+        if rate_for_tenor is not None and sofr is not None:
+            hedge_benefit_bps = round((rate_for_tenor - sofr) * 100, 1)
+        
+        # Format curve for response (sample vertices)
+        sample_tenors = [0.5, 1, 2, 3, 5, 7, 10]
+        curve_sample = {}
+        if curve:
+            for t in sample_tenors:
+                days = int(t * 360)
+                rate = b3_client.interpolate_cupom_cambial(curve, days)
+                if rate is not None:
+                    curve_sample[f"{t}Y"] = round(rate, 4)
+        
+        return {
+            "as_of": datetime.now().strftime("%Y-%m-%d"),
+            "source": "B3 Taxas Referenciais",
+            "is_live": curve is not None,
+            "requested_tenor": tenor,
+            "cupom_cambial_rate": round(rate_for_tenor, 4) if rate_for_tenor else None,
+            "sofr_rate": round(sofr, 4) if sofr else None,
+            "hedge_benefit_bps": hedge_benefit_bps,
+            "calculation": f"({rate_for_tenor:.2f}% - {sofr:.2f}%) × 100 = {hedge_benefit_bps} bps" if hedge_benefit_bps else None,
+            "curve_sample": curve_sample,
+            "notes": {
+                "cupom_cambial": "Implied USD rate in Brazil (from DDI futures)",
+                "sofr": "Secured Overnight Financing Rate (actual USD rate)",
+                "hedge_benefit": "Positive = you GAIN from hedging USD→BRL",
+                "data_source": "B3 publishes daily after market close (~18:00 BRT)"
+            }
+        }
+    except Exception as e:
+        logger.error(f"B3 Cupom Cambial fetch error: {e}")
+        return {
+            "error": "Failed to fetch live B3 data",
+            "fallback_available": True,
+            "notes": "Using fallback reference data. B3 data may be temporarily unavailable."
+        }
+
 
 @app.get("/api/risk-free-rates/{currency}", tags=["Reference Data"])
 async def get_risk_free_curve(currency: str):
@@ -1262,14 +1553,17 @@ async def calculate_hedged_return(request: CIPCalculationRequest):
             hedging_cost_bps = request.hedging_cost_bps
             hedging_cost_source = "Manual"
         else:
-            # Get suggested hedging cost
-            cost_data = get_hedging_cost(request.base_currency, request.target_currency, request.tenor)
+            # Get live hedging cost (uses B3 + FRED for BRL)
+            cost_data = await get_hedging_cost_async(request.base_currency, request.target_currency, request.tenor)
             hedging_cost_bps = cost_data['cost_bps']
             hedging_cost_source = cost_data['source']
+            # Add extra info if available
+            if cost_data.get('is_live'):
+                hedging_cost_source = f"Live ({cost_data['source']})"
         
-        # Apply hedging cost: subtract from hedged return (negative cost = loss)
+        # Apply hedging cost: positive = benefit, negative = cost
         hedging_cost_pp = hedging_cost_bps / 100  # Convert bps to percentage points
-        hedged_return_pp = target_equiv_pp + hedging_cost_pp  # Add because cost is already negative
+        hedged_return_pp = target_equiv_pp + hedging_cost_pp
     
     total_return_target_pp = (math.pow(1 + hedged_return_pp / 100, request.tenor) - 1) * 100
     total_return_base_pp = (math.pow(1 + all_in_base_decimal, request.tenor) - 1) * 100
