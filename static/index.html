@@ -471,11 +471,19 @@
         .form-select {
             cursor: pointer;
             appearance: none;
-            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2371717a'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2371717a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
             background-repeat: no-repeat;
             background-position: right 14px center;
             background-size: 16px;
+            background-color: var(--bg-input);
             padding-right: 44px;
+        }
+        
+        /* Firefox fix for dropdown */
+        .form-select::-ms-expand {
+            display: none;
         }
         
         .form-input:focus, .form-select:focus {
@@ -601,6 +609,13 @@
             background: var(--bg-secondary);
             border-radius: 8px;
             margin-bottom: 12px;
+            border: 1px solid transparent;
+            transition: all 0.2s ease;
+        }
+        
+        .hedging-cost-suggested.applied {
+            border-color: var(--green);
+            background: var(--green-subtle);
         }
         
         .hedging-cost-info {
@@ -614,6 +629,25 @@
             color: var(--text-muted);
             text-transform: uppercase;
             letter-spacing: 0.05em;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .applied-badge {
+            display: none;
+            font-size: 0.65rem;
+            padding: 2px 6px;
+            background: var(--green);
+            color: var(--bg-primary);
+            border-radius: 4px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+        }
+        
+        .hedging-cost-suggested.applied .applied-badge {
+            display: inline-block;
         }
         
         .hedging-cost-value {
@@ -653,35 +687,85 @@
         .hedging-cost-actions {
             display: flex;
             gap: 8px;
+            flex-shrink: 0;
         }
         
-        .btn-use-suggested {
-            padding: 8px 14px;
-            background: var(--green);
-            color: var(--bg-primary);
-            border: none;
+        .btn-apply {
+            padding: 10px 16px;
+            background: transparent;
+            color: var(--green);
+            border: 1px solid var(--green);
             border-radius: 6px;
             font-size: 0.8rem;
             font-weight: 500;
             cursor: pointer;
             transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
         }
         
-        .btn-use-suggested:hover {
-            background: var(--green-light);
+        .btn-apply:hover {
+            background: var(--green-subtle);
         }
         
-        .btn-use-suggested.active {
+        .btn-apply.applied {
             background: var(--green);
-            box-shadow: 0 0 0 2px var(--green-glow);
+            color: var(--bg-primary);
+            border-color: var(--green);
         }
         
+        .btn-apply .check-icon {
+            display: none;
+        }
+        
+        .btn-apply.applied .check-icon {
+            display: inline;
+        }
+        
+        .btn-apply.applied .apply-text {
+            display: none;
+        }
+        
+        /* Divider */
+        .hedging-cost-divider {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin: 16px 0;
+            color: var(--text-muted);
+            font-size: 0.75rem;
+        }
+        
+        .hedging-cost-divider::before,
+        .hedging-cost-divider::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: var(--border);
+        }
+        
+        /* Manual entry section */
         .hedging-cost-manual {
             display: flex;
             align-items: center;
+            justify-content: space-between;
+            padding: 12px 14px;
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            border: 1px solid transparent;
+            transition: all 0.2s ease;
+        }
+        
+        .hedging-cost-manual.applied {
+            border-color: var(--green);
+            background: var(--green-subtle);
+        }
+        
+        .manual-input-group {
+            display: flex;
+            align-items: center;
             gap: 10px;
-            padding-top: 12px;
-            border-top: 1px solid var(--border);
         }
         
         .hedging-cost-manual label {
@@ -693,7 +777,7 @@
         .hedging-cost-manual .form-input {
             padding: 10px 12px;
             font-size: 0.9rem;
-            max-width: 120px;
+            width: 100px;
         }
         
         .hedging-cost-manual .input-unit {
@@ -1337,7 +1421,10 @@
                     <div class="hedging-cost-panel" id="hedgingCostPanel">
                         <div class="hedging-cost-suggested" id="hedgingCostSuggested">
                             <div class="hedging-cost-info">
-                                <span class="hedging-cost-label">Suggested Cost</span>
+                                <span class="hedging-cost-label">
+                                    Suggested Cost
+                                    <span class="applied-badge">✓ Applied</span>
+                                </span>
                                 <div class="hedging-cost-value">
                                     <span class="hedging-cost-rate neutral" id="hedgingCostRate">— bps</span>
                                     <span class="hedging-cost-source" id="hedgingCostSource">Reference</span>
@@ -1345,14 +1432,28 @@
                                 <span class="hedging-cost-instrument" id="hedgingCostInstrument">Select currencies first</span>
                             </div>
                             <div class="hedging-cost-actions">
-                                <button type="button" class="btn-use-suggested active" id="useSuggestedBtn">Use Suggested</button>
+                                <button type="button" class="btn-apply" id="useSuggestedBtn">
+                                    <span class="check-icon">✓</span>
+                                    <span class="apply-text">Apply</span>
+                                </button>
                             </div>
                         </div>
-                        <div class="hedging-cost-manual">
-                            <label>Or enter manually:</label>
-                            <div class="input-with-unit">
-                                <input type="number" class="form-input" id="manualHedgingCost" step="0.1" placeholder="0">
-                                <span class="input-unit">bps</span>
+                        
+                        <div class="hedging-cost-divider">or</div>
+                        
+                        <div class="hedging-cost-manual" id="hedgingCostManual">
+                            <div class="manual-input-group">
+                                <label>Manual override:</label>
+                                <div class="input-with-unit">
+                                    <input type="number" class="form-input" id="manualHedgingCost" step="0.1" placeholder="0">
+                                    <span class="input-unit">bps</span>
+                                </div>
+                            </div>
+                            <div class="hedging-cost-actions">
+                                <button type="button" class="btn-apply" id="applyManualBtn">
+                                    <span class="check-icon">✓</span>
+                                    <span class="apply-text">Apply</span>
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -1492,8 +1593,11 @@
             if (this.checked) {
                 panel.classList.add('show');
                 updateHedgingCostSuggestion();
+                // Auto-apply suggested by default
+                applySuggestedCost();
             } else {
                 panel.classList.remove('show');
+                clearHedgingCostSelection();
             }
         });
         
@@ -1537,7 +1641,7 @@
                 sourceEl.className = 'hedging-cost-source' + (data.is_live ? ' live' : '');
                 
                 // Instrument info
-                instrumentEl.textContent = `${data.instrument} (${data.notes})`;
+                instrumentEl.textContent = `${data.instrument}`;
                 
             } catch (e) {
                 console.error('Failed to fetch hedging cost:', e);
@@ -1546,21 +1650,48 @@
             }
         }
         
-        // Use suggested button
-        document.getElementById('useSuggestedBtn').addEventListener('click', function() {
-            useSuggestedCost = true;
-            this.classList.add('active');
-            document.getElementById('manualHedgingCost').value = '';
-        });
+        // Clear all hedging cost selections
+        function clearHedgingCostSelection() {
+            useSuggestedCost = false;
+            document.getElementById('hedgingCostSuggested').classList.remove('applied');
+            document.getElementById('hedgingCostManual').classList.remove('applied');
+            document.getElementById('useSuggestedBtn').classList.remove('applied');
+            document.getElementById('applyManualBtn').classList.remove('applied');
+        }
         
-        // Manual input handler
-        document.getElementById('manualHedgingCost').addEventListener('input', function() {
-            if (this.value !== '') {
-                useSuggestedCost = false;
-                document.getElementById('useSuggestedBtn').classList.remove('active');
-            } else {
-                useSuggestedCost = true;
-                document.getElementById('useSuggestedBtn').classList.add('active');
+        // Apply suggested cost
+        function applySuggestedCost() {
+            clearHedgingCostSelection();
+            useSuggestedCost = true;
+            document.getElementById('hedgingCostSuggested').classList.add('applied');
+            document.getElementById('useSuggestedBtn').classList.add('applied');
+            document.getElementById('manualHedgingCost').value = '';
+        }
+        
+        // Apply manual cost
+        function applyManualCost() {
+            const manualValue = document.getElementById('manualHedgingCost').value;
+            if (manualValue === '') {
+                // If empty, switch to suggested
+                applySuggestedCost();
+                return;
+            }
+            clearHedgingCostSelection();
+            useSuggestedCost = false;
+            document.getElementById('hedgingCostManual').classList.add('applied');
+            document.getElementById('applyManualBtn').classList.add('applied');
+        }
+        
+        // Use suggested button
+        document.getElementById('useSuggestedBtn').addEventListener('click', applySuggestedCost);
+        
+        // Apply manual button
+        document.getElementById('applyManualBtn').addEventListener('click', applyManualCost);
+        
+        // Manual input - apply on Enter
+        document.getElementById('manualHedgingCost').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                applyManualCost();
             }
         });
         
@@ -1568,12 +1699,20 @@
         document.getElementById('baseCurrency').addEventListener('change', function() {
             if (document.getElementById('includeHedgingCost').checked) {
                 updateHedgingCostSuggestion();
+                // Re-apply suggested if that was selected
+                if (useSuggestedCost) {
+                    applySuggestedCost();
+                }
             }
         });
         
         document.getElementById('tenor').addEventListener('change', function() {
             if (document.getElementById('includeHedgingCost').checked) {
                 updateHedgingCostSuggestion();
+                // Re-apply suggested if that was selected
+                if (useSuggestedCost) {
+                    applySuggestedCost();
+                }
             }
         });
         
