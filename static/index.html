@@ -937,7 +937,138 @@
             color: var(--text-primary);
         }
         
-        /* Comparison Table */
+        /* Results Header Info */
+        .results-header-info {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 16px 20px;
+            background: var(--bg-secondary);
+            border-radius: 12px;
+            margin-bottom: 20px;
+        }
+        
+        .results-pair {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+        
+        .results-pair-label {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        
+        .results-pair-value {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: var(--green);
+            font-family: 'JetBrains Mono', monospace;
+        }
+        
+        .results-arrow {
+            color: var(--text-muted);
+            font-size: 1.2rem;
+        }
+        
+        .results-tenor {
+            margin-left: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            text-align: right;
+        }
+        
+        /* Results Block */
+        .results-block {
+            background: var(--bg-secondary);
+            border-radius: 12px;
+            overflow: hidden;
+            margin-bottom: 20px;
+        }
+        
+        .results-block-header {
+            padding: 12px 16px;
+            background: var(--bg-tertiary);
+            border-bottom: 1px solid var(--border);
+        }
+        
+        .results-block-title {
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+        }
+        
+        /* Results Table */
+        .results-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        .results-table th {
+            padding: 12px 16px;
+            text-align: left;
+            font-size: 0.7rem;
+            font-weight: 500;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+        }
+        
+        .results-table th:last-child,
+        .results-table td:last-child {
+            text-align: right;
+        }
+        
+        .results-table td {
+            padding: 14px 16px;
+            font-size: 0.9rem;
+            border-bottom: 1px solid var(--border);
+            font-family: 'JetBrains Mono', monospace;
+        }
+        
+        .results-table tbody tr:last-child td {
+            border-bottom: none;
+        }
+        
+        .results-table tbody tr:hover {
+            background: var(--bg-tertiary);
+        }
+        
+        .results-table .currency-cell {
+            font-weight: 600;
+            color: var(--text-primary);
+            font-family: 'Outfit', sans-serif;
+        }
+        
+        .results-table .rate-cell {
+            color: var(--text-secondary);
+        }
+        
+        .results-table .hedge-cost-cell {
+            font-size: 0.85rem;
+        }
+        
+        .results-table .hedge-cost-cell.negative {
+            color: var(--red);
+        }
+        
+        .results-table .hedge-cost-cell.positive {
+            color: var(--green);
+        }
+        
+        .results-table .result-cell {
+            font-weight: 600;
+            color: var(--green);
+        }
+        
+        /* Legacy comparison table (keep for compatibility) */
         .comparison-table-wrapper {
             background: var(--bg-secondary);
             border-radius: 12px;
@@ -1558,30 +1689,58 @@
                         <span class="card-badge" id="resultDate"></span>
                     </div>
                     <div class="card-body">
-                        <!-- Results Summary -->
-                        <div class="results-summary" id="resultsSummary">
-                            <div class="summary-header">
-                                <span class="summary-title">Base Currency</span>
-                                <span class="summary-value" id="summaryBaseCurrency">—</span>
+                        <!-- Results Header -->
+                        <div class="results-header-info">
+                            <div class="results-pair">
+                                <span class="results-pair-label">Base</span>
+                                <span class="results-pair-value" id="summaryBaseCurrency">—</span>
                             </div>
-                            <div class="summary-row">
-                                <span>All-In Rate</span>
-                                <span id="summaryAllIn">—</span>
+                            <span class="results-arrow">→</span>
+                            <div class="results-pair">
+                                <span class="results-pair-label">Target</span>
+                                <span class="results-pair-value" id="summaryTargetCurrency">—</span>
+                            </div>
+                            <div class="results-tenor">
+                                <span class="results-pair-label">Tenor</span>
+                                <span class="results-pair-value" id="summaryTenor">—</span>
                             </div>
                         </div>
                         
-                        <!-- Comparison Table -->
-                        <div class="comparison-table-wrapper">
-                            <table class="comparison-table" id="comparisonTable">
-                                <thead id="comparisonHead">
+                        <!-- Block 1: Annual Returns -->
+                        <div class="results-block">
+                            <div class="results-block-header">
+                                <span class="results-block-title">Annual Returns (p.a.)</span>
+                            </div>
+                            <table class="results-table" id="annualResultsTable">
+                                <thead id="annualResultsHead">
                                     <tr>
                                         <th>Target</th>
-                                        <th>Risk-Free Δ</th>
+                                        <th>Base Rate</th>
                                         <th>Hedged Return</th>
-                                        <th>Total Return</th>
+                                        <th>Net Return p.a.</th>
                                     </tr>
                                 </thead>
-                                <tbody id="comparisonBody">
+                                <tbody id="annualResultsBody">
+                                    <!-- Dynamic rows -->
+                                </tbody>
+                            </table>
+                        </div>
+                        
+                        <!-- Block 2: Full Tenor Returns -->
+                        <div class="results-block">
+                            <div class="results-block-header">
+                                <span class="results-block-title">Total Returns (Full Tenor)</span>
+                            </div>
+                            <table class="results-table" id="tenorResultsTable">
+                                <thead id="tenorResultsHead">
+                                    <tr>
+                                        <th>Target</th>
+                                        <th>Base Total</th>
+                                        <th>Hedged Total</th>
+                                        <th>Net Total</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tenorResultsBody">
                                     <!-- Dynamic rows -->
                                 </tbody>
                             </table>
@@ -2189,70 +2348,134 @@
                     if (!firstResult) firstResult = data;
                 }
                 
-                // Update summary
+                // Update header info
                 document.getElementById('summaryBaseCurrency').textContent = baseCurrency;
-                document.getElementById('summaryAllIn').textContent = firstResult.all_in_base_pp.toFixed(2) + '%';
+                document.getElementById('summaryTargetCurrency').textContent = targetCurrencies.join(', ');
+                document.getElementById('summaryTenor').textContent = tenor + 'Y';
                 document.getElementById('resultDate').textContent = firstResult.as_of_date;
                 
                 // Check if any result has hedging cost
                 const anyHasHedgingCost = calculatedResults.some(r => r.hedging_cost_bps !== null && r.hedging_cost_bps !== undefined);
                 
-                // Update table header based on whether hedging cost is included
-                const thead = document.getElementById('comparisonHead');
+                // === BLOCK 1: Annual Returns (p.a.) ===
+                const annualHead = document.getElementById('annualResultsHead');
+                const annualBody = document.getElementById('annualResultsBody');
+                
                 if (anyHasHedgingCost) {
-                    thead.innerHTML = `
+                    annualHead.innerHTML = `
                         <tr>
                             <th>Target</th>
-                            <th>Risk-Free Δ</th>
-                            <th>Hedged Return</th>
-                            <th>Hedge Cost</th>
-                            <th>Net Return</th>
+                            <th>Base Rate p.a.</th>
+                            <th>Hedged Return p.a.</th>
+                            <th>Hedge Cost p.a.</th>
+                            <th>Net Return p.a.</th>
                         </tr>
                     `;
                 } else {
-                    thead.innerHTML = `
+                    annualHead.innerHTML = `
                         <tr>
                             <th>Target</th>
-                            <th>Risk-Free Δ</th>
-                            <th>Hedged Return</th>
-                            <th>Total Return</th>
+                            <th>Base Rate p.a.</th>
+                            <th>Hedged Return p.a.</th>
+                            <th>Net Return p.a.</th>
                         </tr>
                     `;
                 }
                 
-                // Build comparison table rows
-                const tbody = document.getElementById('comparisonBody');
-                tbody.innerHTML = '';
-                
+                annualBody.innerHTML = '';
                 calculatedResults.forEach(result => {
-                    const rfDelta = result.risk_free_target - result.risk_free_base;
                     const hasHedgingCost = result.hedging_cost_bps !== null && result.hedging_cost_bps !== undefined;
-                    
                     const row = document.createElement('tr');
                     
                     if (anyHasHedgingCost) {
-                        // 5-column layout: Target | RF Delta | Hedged Return (before cost) | Hedge Cost | Net Return
+                        const hedgeCostPct = hasHedgingCost ? (result.hedging_cost_bps / 100) : 0;
+                        const hedgeCostClass = hasHedgingCost ? (result.hedging_cost_bps >= 0 ? 'positive' : 'negative') : '';
                         const hedgeCostDisplay = hasHedgingCost 
-                            ? `<span class="${result.hedging_cost_bps >= 0 ? 'rate-positive' : 'rate-negative'}">${result.hedging_cost_bps >= 0 ? '+' : ''}${result.hedging_cost_bps.toFixed(0)} bps</span>`
+                            ? `${result.hedging_cost_bps >= 0 ? '+' : ''}${result.hedging_cost_bps.toFixed(0)} bps`
                             : '—';
                         
                         row.innerHTML = `
                             <td class="currency-cell">${result.target_currency}</td>
-                            <td class="rate-cell ${rfDelta >= 0 ? 'rate-negative' : 'rate-positive'}">${rfDelta >= 0 ? '+' : ''}${rfDelta.toFixed(2)}%</td>
+                            <td class="rate-cell">${result.all_in_base_pp.toFixed(2)}%</td>
                             <td class="rate-cell">${result.usd_equiv_pp.toFixed(2)}%</td>
-                            <td class="rate-cell">${hedgeCostDisplay}</td>
-                            <td class="hedged-cell">${result.hedged_return_pp.toFixed(2)}%</td>
+                            <td class="hedge-cost-cell ${hedgeCostClass}">${hedgeCostDisplay}</td>
+                            <td class="result-cell">${result.hedged_return_pp.toFixed(2)}%</td>
                         `;
                     } else {
-                        // 4-column layout: Target | RF Delta | Hedged Return | Total Return
                         row.innerHTML = `
                             <td class="currency-cell">${result.target_currency}</td>
-                            <td class="rate-cell ${rfDelta >= 0 ? 'rate-negative' : 'rate-positive'}">${rfDelta >= 0 ? '+' : ''}${rfDelta.toFixed(2)}%</td>
-                            <td class="hedged-cell">${result.hedged_return_pp.toFixed(2)}%</td>
-                            <td class="total-cell">${result.total_return_target_pp.toFixed(2)}%</td>
+                            <td class="rate-cell">${result.all_in_base_pp.toFixed(2)}%</td>
+                            <td class="rate-cell">${result.usd_equiv_pp.toFixed(2)}%</td>
+                            <td class="result-cell">${result.hedged_return_pp.toFixed(2)}%</td>
                         `;
                     }
-                    tbody.appendChild(row);
+                    annualBody.appendChild(row);
+                });
+                
+                // === BLOCK 2: Full Tenor Returns ===
+                const tenorHead = document.getElementById('tenorResultsHead');
+                const tenorBody = document.getElementById('tenorResultsBody');
+                
+                if (anyHasHedgingCost) {
+                    tenorHead.innerHTML = `
+                        <tr>
+                            <th>Target</th>
+                            <th>Base Total (${tenor}Y)</th>
+                            <th>Hedged Total</th>
+                            <th>Hedge Cost Impact</th>
+                            <th>Net Total (${tenor}Y)</th>
+                        </tr>
+                    `;
+                } else {
+                    tenorHead.innerHTML = `
+                        <tr>
+                            <th>Target</th>
+                            <th>Base Total (${tenor}Y)</th>
+                            <th>Hedged Total (${tenor}Y)</th>
+                            <th>Net Total (${tenor}Y)</th>
+                        </tr>
+                    `;
+                }
+                
+                tenorBody.innerHTML = '';
+                calculatedResults.forEach(result => {
+                    const hasHedgingCost = result.hedging_cost_bps !== null && result.hedging_cost_bps !== undefined;
+                    const row = document.createElement('tr');
+                    
+                    // Calculate compounded returns
+                    const baseTotal = result.total_return_base_pp;
+                    
+                    // Hedged total WITHOUT hedge cost (compound usd_equiv_pp)
+                    const hedgedTotalBeforeCost = (Math.pow(1 + result.usd_equiv_pp / 100, tenor) - 1) * 100;
+                    
+                    // Net total WITH hedge cost (compound hedged_return_pp)
+                    const netTotal = result.total_return_target_pp;
+                    
+                    // Hedge cost impact = difference between hedged total and net total
+                    const hedgeCostImpact = hasHedgingCost ? (netTotal - hedgedTotalBeforeCost) : 0;
+                    
+                    if (anyHasHedgingCost) {
+                        const hedgeCostClass = hasHedgingCost ? (hedgeCostImpact >= 0 ? 'positive' : 'negative') : '';
+                        const hedgeCostDisplay = hasHedgingCost 
+                            ? `${hedgeCostImpact >= 0 ? '+' : ''}${hedgeCostImpact.toFixed(2)}%`
+                            : '—';
+                        
+                        row.innerHTML = `
+                            <td class="currency-cell">${result.target_currency}</td>
+                            <td class="rate-cell">${baseTotal.toFixed(2)}%</td>
+                            <td class="rate-cell">${hedgedTotalBeforeCost.toFixed(2)}%</td>
+                            <td class="hedge-cost-cell ${hedgeCostClass}">${hedgeCostDisplay}</td>
+                            <td class="result-cell">${netTotal.toFixed(2)}%</td>
+                        `;
+                    } else {
+                        row.innerHTML = `
+                            <td class="currency-cell">${result.target_currency}</td>
+                            <td class="rate-cell">${baseTotal.toFixed(2)}%</td>
+                            <td class="rate-cell">${hedgedTotalBeforeCost.toFixed(2)}%</td>
+                            <td class="result-cell">${netTotal.toFixed(2)}%</td>
+                        `;
+                    }
+                    tenorBody.appendChild(row);
                 });
                 
                 // Update assumptions (from first result)
