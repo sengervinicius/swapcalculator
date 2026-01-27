@@ -473,17 +473,54 @@
             appearance: none;
             -webkit-appearance: none;
             -moz-appearance: none;
-            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2371717a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
-            background-repeat: no-repeat;
-            background-position: right 14px center;
-            background-size: 16px;
-            background-color: var(--bg-input);
             padding-right: 44px;
         }
         
         /* Firefox fix for dropdown */
         .form-select::-ms-expand {
             display: none;
+        }
+        
+        /* Dropdown arrow wrapper */
+        .select-wrapper {
+            position: relative;
+            display: block;
+        }
+        
+        .select-wrapper::after {
+            content: '';
+            position: absolute;
+            right: 16px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 0;
+            height: 0;
+            border-left: 5px solid transparent;
+            border-right: 5px solid transparent;
+            border-top: 6px solid var(--text-muted);
+            pointer-events: none;
+        }
+        
+        .select-wrapper-sm::after {
+            right: 12px;
+            border-left: 4px solid transparent;
+            border-right: 4px solid transparent;
+            border-top: 5px solid var(--text-muted);
+        }
+        
+        /* For selects inside input-with-remove */
+        .input-with-remove {
+            position: relative;
+            display: flex;
+            gap: 8px;
+        }
+        
+        .input-with-remove .select-wrapper {
+            flex: 1;
+        }
+        
+        .input-with-remove .select-wrapper::after {
+            right: 16px;
         }
         
         .form-input:focus, .form-select:focus {
@@ -969,12 +1006,36 @@
             color: var(--green);
         }
         
-        /* Hedging cost assumption highlight */
+        /* Hedging cost assumption row */
         .assumption-row.hedging-cost-assumption {
-            background: rgba(239, 68, 68, 0.05);
-            margin: -8px -12px;
-            padding: 8px 12px;
+            background: var(--bg-tertiary);
+            margin: 4px -12px;
+            padding: 10px 12px;
             border-radius: 6px;
+            border-left: 3px solid var(--yellow);
+        }
+        
+        .assumption-row.hedging-cost-assumption .assumption-value.negative {
+            color: var(--red);
+        }
+        
+        .assumption-row.hedging-cost-assumption .assumption-value.positive {
+            color: var(--green);
+        }
+        
+        /* Final total row in assumptions */
+        .assumption-row.assumption-total {
+            background: var(--green-subtle);
+            margin: 8px -12px -8px;
+            padding: 12px 12px;
+            border-radius: 0 0 8px 8px;
+            border-top: 1px solid var(--green);
+        }
+        
+        .assumption-row.assumption-total .assumption-value.highlight {
+            color: var(--green);
+            font-size: 1.1rem;
+            font-weight: 700;
         }
         
         /* Chart Section */
@@ -1335,25 +1396,29 @@
                     
                     <div class="form-row">
                         <label class="form-label">Currency</label>
-                        <select class="form-select" id="baseCurrency" required>
-                            <option value="">Select currency...</option>
-                            <option value="BRL">BRL — Brazilian Real</option>
-                            <option value="USD">USD — US Dollar</option>
-                            <option value="EUR">EUR — Euro</option>
-                            <option value="GBP">GBP — British Pound</option>
-                            <option value="CHF">CHF — Swiss Franc</option>
-                            <option value="JPY">JPY — Japanese Yen</option>
-                            <option value="CNY">CNY — Chinese Yuan</option>
-                            <option value="CAD">CAD — Canadian Dollar</option>
-                            <option value="AUD">AUD — Australian Dollar</option>
-                        </select>
+                        <div class="select-wrapper">
+                            <select class="form-select" id="baseCurrency" required>
+                                <option value="">Select currency...</option>
+                                <option value="BRL">BRL — Brazilian Real</option>
+                                <option value="USD">USD — US Dollar</option>
+                                <option value="EUR">EUR — Euro</option>
+                                <option value="GBP">GBP — British Pound</option>
+                                <option value="CHF">CHF — Swiss Franc</option>
+                                <option value="JPY">JPY — Japanese Yen</option>
+                                <option value="CNY">CNY — Chinese Yuan</option>
+                                <option value="CAD">CAD — Canadian Dollar</option>
+                                <option value="AUD">AUD — Australian Dollar</option>
+                            </select>
+                        </div>
                     </div>
                     
                     <div class="form-row">
                         <label class="form-label">Indexer / Rate</label>
-                        <select class="form-select" id="indexerKey" required>
-                            <option value="">Select currency first...</option>
-                        </select>
+                        <div class="select-wrapper">
+                            <select class="form-select" id="indexerKey" required>
+                                <option value="">Select currency first...</option>
+                            </select>
+                        </div>
                     </div>
                     
                     <div class="form-row">
@@ -1380,18 +1445,20 @@
                             <div class="form-row">
                                 <label class="form-label">Target Currency</label>
                                 <div class="input-with-remove">
-                                    <select class="form-select target-currency" required>
-                                        <option value="">Select currency...</option>
-                                        <option value="BRL">BRL — Brazilian Real</option>
-                                        <option value="USD" selected>USD — US Dollar</option>
-                                        <option value="EUR">EUR — Euro</option>
-                                        <option value="GBP">GBP — British Pound</option>
-                                        <option value="CHF">CHF — Swiss Franc</option>
-                                        <option value="JPY">JPY — Japanese Yen</option>
-                                        <option value="CNY">CNY — Chinese Yuan</option>
-                                        <option value="CAD">CAD — Canadian Dollar</option>
-                                        <option value="AUD">AUD — Australian Dollar</option>
-                                    </select>
+                                    <div class="select-wrapper">
+                                        <select class="form-select target-currency" required>
+                                            <option value="">Select currency...</option>
+                                            <option value="BRL">BRL — Brazilian Real</option>
+                                            <option value="USD" selected>USD — US Dollar</option>
+                                            <option value="EUR">EUR — Euro</option>
+                                            <option value="GBP">GBP — British Pound</option>
+                                            <option value="CHF">CHF — Swiss Franc</option>
+                                            <option value="JPY">JPY — Japanese Yen</option>
+                                            <option value="CNY">CNY — Chinese Yuan</option>
+                                            <option value="CAD">CAD — Canadian Dollar</option>
+                                            <option value="AUD">AUD — Australian Dollar</option>
+                                        </select>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -1516,18 +1583,20 @@
                             </div>
                             <div class="additional-curves-container" id="additionalCurvesContainer" style="display: none;">
                                 <div class="additional-curves-row">
-                                    <select class="form-select form-select-sm" id="additionalCurveSelect">
-                                        <option value="">Select currency to add...</option>
-                                        <option value="BRL">BRL</option>
-                                        <option value="USD">USD</option>
-                                        <option value="EUR">EUR</option>
-                                        <option value="GBP">GBP</option>
-                                        <option value="CHF">CHF</option>
-                                        <option value="JPY">JPY</option>
-                                        <option value="CNY">CNY</option>
-                                        <option value="CAD">CAD</option>
-                                        <option value="AUD">AUD</option>
-                                    </select>
+                                    <div class="select-wrapper select-wrapper-sm">
+                                        <select class="form-select form-select-sm" id="additionalCurveSelect">
+                                            <option value="">Select currency to add...</option>
+                                            <option value="BRL">BRL</option>
+                                            <option value="USD">USD</option>
+                                            <option value="EUR">EUR</option>
+                                            <option value="GBP">GBP</option>
+                                            <option value="CHF">CHF</option>
+                                            <option value="JPY">JPY</option>
+                                            <option value="CNY">CNY</option>
+                                            <option value="CAD">CAD</option>
+                                            <option value="AUD">AUD</option>
+                                        </select>
+                                    </div>
                                     <button type="button" class="btn-add-sm" id="confirmAddCurve">Add</button>
                                     <button type="button" class="btn-cancel-sm" id="cancelAddCurve">✕</button>
                                 </div>
@@ -1793,18 +1862,20 @@
                 <div class="form-row">
                     <label class="form-label">Target Currency</label>
                     <div class="input-with-remove">
-                        <select class="form-select target-currency" required>
-                            <option value="">Select currency...</option>
-                            <option value="BRL" ${baseCurrency === 'BRL' ? 'disabled' : ''}>BRL — Brazilian Real</option>
-                            <option value="USD" ${baseCurrency === 'USD' ? 'disabled' : ''}>USD — US Dollar</option>
-                            <option value="EUR" ${baseCurrency === 'EUR' ? 'disabled' : ''}>EUR — Euro</option>
-                            <option value="GBP" ${baseCurrency === 'GBP' ? 'disabled' : ''}>GBP — British Pound</option>
-                            <option value="CHF" ${baseCurrency === 'CHF' ? 'disabled' : ''}>CHF — Swiss Franc</option>
-                            <option value="JPY" ${baseCurrency === 'JPY' ? 'disabled' : ''}>JPY — Japanese Yen</option>
-                            <option value="CNY" ${baseCurrency === 'CNY' ? 'disabled' : ''}>CNY — Chinese Yuan</option>
-                            <option value="CAD" ${baseCurrency === 'CAD' ? 'disabled' : ''}>CAD — Canadian Dollar</option>
-                            <option value="AUD" ${baseCurrency === 'AUD' ? 'disabled' : ''}>AUD — Australian Dollar</option>
-                        </select>
+                        <div class="select-wrapper">
+                            <select class="form-select target-currency" required>
+                                <option value="">Select currency...</option>
+                                <option value="BRL" ${baseCurrency === 'BRL' ? 'disabled' : ''}>BRL — Brazilian Real</option>
+                                <option value="USD" ${baseCurrency === 'USD' ? 'disabled' : ''}>USD — US Dollar</option>
+                                <option value="EUR" ${baseCurrency === 'EUR' ? 'disabled' : ''}>EUR — Euro</option>
+                                <option value="GBP" ${baseCurrency === 'GBP' ? 'disabled' : ''}>GBP — British Pound</option>
+                                <option value="CHF" ${baseCurrency === 'CHF' ? 'disabled' : ''}>CHF — Swiss Franc</option>
+                                <option value="JPY" ${baseCurrency === 'JPY' ? 'disabled' : ''}>JPY — Japanese Yen</option>
+                                <option value="CNY" ${baseCurrency === 'CNY' ? 'disabled' : ''}>CNY — Chinese Yuan</option>
+                                <option value="CAD" ${baseCurrency === 'CAD' ? 'disabled' : ''}>CAD — Canadian Dollar</option>
+                                <option value="AUD" ${baseCurrency === 'AUD' ? 'disabled' : ''}>AUD — Australian Dollar</option>
+                            </select>
+                        </div>
                         <button type="button" class="btn-remove" onclick="removeTarget(${targetCounter})">✕</button>
                     </div>
                 </div>
@@ -2134,16 +2205,43 @@
                     const isHedgingCost = a.name.includes('Hedging Cost');
                     const row = document.createElement('div');
                     row.className = 'assumption-row' + (isHedgingCost ? ' hedging-cost-assumption' : '');
+                    
+                    // Format value - for hedging cost show in bps and with +/- sign
+                    let valueDisplay = '—';
+                    if (a.value_pp !== null) {
+                        if (isHedgingCost) {
+                            // Convert back to bps for display and show +/- sign
+                            const bpsValue = a.value_pp * 100;
+                            const sign = bpsValue >= 0 ? '+' : '';
+                            valueDisplay = `${sign}${bpsValue.toFixed(1)} bps`;
+                        } else {
+                            valueDisplay = a.value_pp.toFixed(4) + '%';
+                        }
+                    }
+                    
                     row.innerHTML = `
                         <span class="assumption-name">
-                            ${a.name.replace(' [Live]', '')}
+                            ${isHedgingCost ? '→ ' : ''}${a.name.replace(' [Live]', '')}
                             ${isLive ? '<span class="live-tag">Live</span>' : ''}
                         </span>
                         <span class="assumption-source">${a.source_name}</span>
-                        <span class="assumption-value">${a.value_pp !== null ? a.value_pp.toFixed(4) + '%' : '—'}</span>
+                        <span class="assumption-value ${isHedgingCost ? (a.value_pp >= 0 ? 'positive' : 'negative') : ''}">${valueDisplay}</span>
                     `;
                     assumptionsList.appendChild(row);
                 });
+                
+                // Add final hedged return line if hedging cost was applied
+                const hasHedgingCost = firstResult.hedging_cost_bps !== null && firstResult.hedging_cost_bps !== undefined;
+                if (hasHedgingCost) {
+                    const finalRow = document.createElement('div');
+                    finalRow.className = 'assumption-row assumption-total';
+                    finalRow.innerHTML = `
+                        <span class="assumption-name"><strong>= Net Hedged Return</strong></span>
+                        <span class="assumption-source"></span>
+                        <span class="assumption-value highlight">${firstResult.hedged_return_pp.toFixed(2)}%</span>
+                    `;
+                    assumptionsList.appendChild(finalRow);
+                }
                 
                 // Status messages
                 const statusMessages = document.getElementById('statusMessages');
