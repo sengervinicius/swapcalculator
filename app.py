@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 app = FastAPI(
     title="Hedged Return Converter API",
     description="CIP-based hedged return calculations with live market data",
-    version="2.1.0"
+    version="5.0.0"
 )
 
 app.add_middleware(
@@ -85,6 +85,8 @@ class CIPCalculationRequest(BaseModel):
     target_currency: str
     spread: float = Field(..., ge=0, le=100)
     tenor: float = Field(..., gt=0, le=50)
+    include_hedging_cost: bool = Field(default=False, description="Include hedging cost in calculation")
+    hedging_cost_bps: Optional[float] = Field(default=None, description="Manual hedging cost override in bps")
 
 class AssumptionItem(BaseModel):
     name: str
@@ -102,6 +104,8 @@ class CIPCalculationResponse(BaseModel):
     all_in_base_pp: float
     risk_free_base: float
     risk_free_target: float
+    hedging_cost_bps: Optional[float] = None
+    hedged_return_pp: float  # The main hedged return (after hedging cost if included)
     usd_equiv_pp: float
     total_return_target_pp: float
     total_return_base_pp: float
@@ -207,6 +211,39 @@ FALLBACK_RISK_FREE = {
     'CNY': {1: 1.80, 2: 1.90, 3: 2.00, 5: 2.20, 10: 2.50},
     'CAD': {1: 3.20, 2: 3.10, 3: 3.00, 5: 2.90, 10: 3.20},
     'AUD': {1: 4.10, 2: 4.00, 3: 3.95, 5: 3.90, 10: 4.20}
+}
+
+# ============================================================================
+# HEDGING COST / CROSS-CURRENCY BASIS (in bps)
+# Negative = more expensive to hedge INTO that currency from USD
+# For BRL, this represents NDF implied cost
+# Reference data as of Jan 2025 - typical ranges
+# ============================================================================
+
+FALLBACK_HEDGING_COST = {
+    # vs USD basis (bps) - by tenor in years
+    'USD': {1: 0, 2: 0, 3: 0, 5: 0, 10: 0},  # USD vs USD = 0
+    'EUR': {1: -25, 2: -22, 3: -20, 5: -18, 10: -15},  # EUR/USD basis
+    'GBP': {1: -12, 2: -10, 3: -8, 5: -6, 10: -5},   # GBP/USD basis
+    'JPY': {1: -45, 2: -40, 3: -35, 5: -30, 10: -25},  # JPY/USD basis (typically wider)
+    'CHF': {1: -35, 2: -30, 3: -28, 5: -25, 10: -20},  # CHF/USD basis
+    'CAD': {1: -8, 2: -6, 3: -5, 5: -4, 10: -3},    # CAD/USD basis (usually tight)
+    'AUD': {1: 8, 2: 10, 3: 12, 5: 15, 10: 18},     # AUD/USD basis (often positive!)
+    'BRL': {1: -120, 2: -150, 3: -180, 5: -200, 10: -220},  # BRL NDF implied cost
+    'CNY': {1: -80, 2: -100, 3: -120, 5: -140, 10: -160},   # CNY NDF implied cost
+}
+
+# Hedging cost descriptions for UI
+HEDGING_COST_INFO = {
+    'USD': {'type': 'deliverable', 'instrument': 'N/A (base)', 'notes': 'Base currency'},
+    'EUR': {'type': 'deliverable', 'instrument': 'Cross-Currency Basis Swap', 'notes': 'EUR/USD xccy basis'},
+    'GBP': {'type': 'deliverable', 'instrument': 'Cross-Currency Basis Swap', 'notes': 'GBP/USD xccy basis'},
+    'JPY': {'type': 'deliverable', 'instrument': 'Cross-Currency Basis Swap', 'notes': 'JPY/USD xccy basis - typically wider'},
+    'CHF': {'type': 'deliverable', 'instrument': 'Cross-Currency Basis Swap', 'notes': 'CHF/USD xccy basis'},
+    'CAD': {'type': 'deliverable', 'instrument': 'Cross-Currency Basis Swap', 'notes': 'CAD/USD xccy basis - usually tight'},
+    'AUD': {'type': 'deliverable', 'instrument': 'Cross-Currency Basis Swap', 'notes': 'AUD/USD xccy basis - often positive'},
+    'BRL': {'type': 'ndf', 'instrument': 'Non-Deliverable Forward (NDF)', 'notes': 'BRL/USD NDF implied cost - restricted currency'},
+    'CNY': {'type': 'ndf', 'instrument': 'Non-Deliverable Forward (NDF)', 'notes': 'CNY/USD NDF implied cost - restricted currency'},
 }
 
 # ============================================================================
@@ -912,6 +949,96 @@ async def get_risk_free_rate(currency: str, tenor: float) -> tuple[Optional[floa
     return None, "Not Available"
 
 # ============================================================================
+# HEDGING COST FUNCTIONS
+# ============================================================================
+
+def interpolate_hedging_cost(currency: str, tenor: float) -> Optional[float]:
+    """Interpolate hedging cost (in bps) for a given currency and tenor"""
+    currency = currency.upper()
+    if currency not in FALLBACK_HEDGING_COST:
+        return None
+    
+    curve = FALLBACK_HEDGING_COST[currency]
+    tenors = sorted(curve.keys())
+    
+    if tenor <= tenors[0]:
+        return curve[tenors[0]]
+    if tenor >= tenors[-1]:
+        return curve[tenors[-1]]
+    
+    for i in range(len(tenors) - 1):
+        t1, t2 = tenors[i], tenors[i + 1]
+        if t1 <= tenor <= t2:
+            r1, r2 = curve[t1], curve[t2]
+            return r1 + (r2 - r1) * (tenor - t1) / (t2 - t1)
+    
+    return None
+
+
+def get_hedging_cost(base_currency: str, target_currency: str, tenor: float) -> dict:
+    """
+    Calculate hedging cost between two currencies.
+    Returns cost in bps and metadata about the source.
+    
+    Logic:
+    - If hedging FROM BRL TO another currency: use BRL NDF cost (negative = cost to hedge)
+    - If hedging TO BRL FROM another currency: use inverted BRL NDF cost
+    - For developed market pairs: combine basis (e.g., EUR->GBP = EUR/USD - GBP/USD)
+    """
+    base = base_currency.upper()
+    target = target_currency.upper()
+    
+    # Same currency = no cost
+    if base == target:
+        return {
+            "cost_bps": 0,
+            "source": "N/A",
+            "is_live": False,
+            "instrument": "None",
+            "notes": "Same currency pair"
+        }
+    
+    # Get base info
+    base_info = HEDGING_COST_INFO.get(base, {'type': 'unknown', 'instrument': 'Unknown', 'notes': ''})
+    target_info = HEDGING_COST_INFO.get(target, {'type': 'unknown', 'instrument': 'Unknown', 'notes': ''})
+    
+    # Calculate cost
+    base_cost = interpolate_hedging_cost(base, tenor) or 0
+    target_cost = interpolate_hedging_cost(target, tenor) or 0
+    
+    # The hedging cost from base to target is the difference
+    # Negative cost = more expensive to hedge into target
+    # If base is BRL (NDF), we pay that cost to convert out
+    # If target is BRL (NDF), we pay that cost to convert in
+    
+    if base in ['BRL', 'CNY']:
+        # Hedging FROM restricted currency - we pay the NDF cost
+        cost_bps = base_cost  # Already negative
+        instrument = f"{base} NDF"
+        notes = f"{base} NDF implied cost to hedge into {target}"
+    elif target in ['BRL', 'CNY']:
+        # Hedging INTO restricted currency - inverted cost
+        cost_bps = -target_cost  # Invert the sign
+        instrument = f"{target} NDF"
+        notes = f"{target} NDF implied cost when hedging from {base}"
+    else:
+        # Both are deliverable - use cross-currency basis difference
+        cost_bps = target_cost - base_cost
+        instrument = "Cross-Currency Basis Swap"
+        notes = f"{base}/{target} xccy basis ({base}/USD vs {target}/USD)"
+    
+    return {
+        "cost_bps": round(cost_bps, 1),
+        "source": "Reference",
+        "is_live": False,  # We don't have live basis data yet
+        "instrument": instrument,
+        "notes": notes,
+        "base_type": base_info.get('type', 'unknown'),
+        "target_type": target_info.get('type', 'unknown')
+    }
+
+
+# ============================================================================
 # API ENDPOINTS
 # ============================================================================
 
@@ -941,6 +1068,55 @@ def config_status():
         "ecb_configured": True,
         "boe_configured": True,
         "httpx_available": HTTPX_AVAILABLE
+    }
+
+@app.get("/api/hedging-cost/{base_currency}/{target_currency}", tags=["Reference Data"])
+def get_hedging_cost_endpoint(base_currency: str, target_currency: str, tenor: float = 5):
+    """
+    Get hedging cost (cross-currency basis or NDF cost) for a currency pair.
+    
+    Returns cost in basis points (bps) and metadata.
+    - Negative cost = more expensive to hedge into target currency
+    - Positive cost = hedging benefit (rare, e.g., AUD)
+    
+    For restricted currencies (BRL, CNY): Uses NDF implied costs
+    For deliverable currencies: Uses cross-currency basis swap spreads
+    """
+    base = base_currency.upper()
+    target = target_currency.upper()
+    supported = ['BRL', 'USD', 'EUR', 'GBP', 'CHF', 'JPY', 'CNY', 'CAD', 'AUD']
+    
+    if base not in supported:
+        raise HTTPException(status_code=404, detail=f"Base currency {base} not supported")
+    if target not in supported:
+        raise HTTPException(status_code=404, detail=f"Target currency {target} not supported")
+    
+    result = get_hedging_cost(base, target, tenor)
+    result['base_currency'] = base
+    result['target_currency'] = target
+    result['tenor'] = tenor
+    result['as_of'] = datetime.now().strftime("%Y-%m-%d")
+    
+    return result
+
+@app.get("/api/hedging-cost/all", tags=["Reference Data"])
+def get_all_hedging_costs(tenor: float = 5):
+    """Get hedging cost matrix for all supported currency pairs"""
+    supported = ['BRL', 'USD', 'EUR', 'GBP', 'CHF', 'JPY', 'CNY', 'CAD', 'AUD']
+    matrix = {}
+    
+    for base in supported:
+        matrix[base] = {}
+        for target in supported:
+            if base != target:
+                cost_data = get_hedging_cost(base, target, tenor)
+                matrix[base][target] = cost_data['cost_bps']
+    
+    return {
+        "tenor": tenor,
+        "matrix": matrix,
+        "as_of": datetime.now().strftime("%Y-%m-%d"),
+        "notes": "Cost in bps. Negative = more expensive to hedge into target."
     }
 
 @app.get("/api/indexers", tags=["Reference Data"])
@@ -1044,7 +1220,7 @@ async def interpolate_risk_free_rate(request: RiskFreeRateRequest):
 
 @app.post("/api/calculate/hedged-return", tags=["Calculations"], response_model=CIPCalculationResponse)
 async def calculate_hedged_return(request: CIPCalculationRequest):
-    """Calculate CIP-based hedged return conversion"""
+    """Calculate CIP-based hedged return conversion with optional hedging cost"""
     
     indexers = await get_live_indexers(request.base_currency)
     
@@ -1075,7 +1251,27 @@ async def calculate_hedged_return(request: CIPCalculationRequest):
     target_equiv_decimal = (1 + all_in_base_decimal) * ((1 + i_target_decimal) / (1 + i_base_decimal)) - 1
     target_equiv_pp = target_equiv_decimal * 100
     
-    total_return_target_pp = (math.pow(1 + target_equiv_decimal, request.tenor) - 1) * 100
+    # Handle hedging cost
+    hedging_cost_bps = None
+    hedging_cost_source = None
+    hedged_return_pp = target_equiv_pp  # Default: no hedging cost adjustment
+    
+    if request.include_hedging_cost:
+        if request.hedging_cost_bps is not None:
+            # Use manual override
+            hedging_cost_bps = request.hedging_cost_bps
+            hedging_cost_source = "Manual"
+        else:
+            # Get suggested hedging cost
+            cost_data = get_hedging_cost(request.base_currency, request.target_currency, request.tenor)
+            hedging_cost_bps = cost_data['cost_bps']
+            hedging_cost_source = cost_data['source']
+        
+        # Apply hedging cost: subtract from hedged return (negative cost = loss)
+        hedging_cost_pp = hedging_cost_bps / 100  # Convert bps to percentage points
+        hedged_return_pp = target_equiv_pp + hedging_cost_pp  # Add because cost is already negative
+    
+    total_return_target_pp = (math.pow(1 + hedged_return_pp / 100, request.tenor) - 1) * 100
     total_return_base_pp = (math.pow(1 + all_in_base_decimal, request.tenor) - 1) * 100
     
     is_live = "[Live]" in base_idx_data.get('label', '')
@@ -1087,7 +1283,21 @@ async def calculate_hedged_return(request: CIPCalculationRequest):
         AssumptionItem(name="Spread", value_pp=request.spread, tenor_label="Input", source_name="User")
     ]
     
+    # Add hedging cost to assumptions if included
+    if request.include_hedging_cost and hedging_cost_bps is not None:
+        assumptions.append(AssumptionItem(
+            name=f"Hedging Cost ({request.base_currency}→{request.target_currency})",
+            value_pp=round(hedging_cost_bps / 100, 4),  # Convert to pp for display
+            tenor_label=f"{request.tenor}Y",
+            source_name=hedging_cost_source
+        ))
+    
     warnings = ["✓ CIP-based hedged conversion applied"]
+    if request.include_hedging_cost:
+        if hedging_cost_bps < 0:
+            warnings.append(f"⚠️ Hedging cost of {abs(hedging_cost_bps):.1f} bps applied ({hedging_cost_source})")
+        elif hedging_cost_bps > 0:
+            warnings.append(f"✓ Hedging benefit of {hedging_cost_bps:.1f} bps applied ({hedging_cost_source})")
     if not is_live:
         warnings.insert(0, "⚠️ Using reference data for some inputs")
     
@@ -1101,7 +1311,9 @@ async def calculate_hedged_return(request: CIPCalculationRequest):
         all_in_base_pp=round(all_in_base_pp, 4),
         risk_free_base=i_base_t,
         risk_free_target=i_target_t,
-        usd_equiv_pp=round(target_equiv_pp, 4),
+        hedging_cost_bps=hedging_cost_bps,
+        hedged_return_pp=round(hedged_return_pp, 4),
+        usd_equiv_pp=round(target_equiv_pp, 4),  # Pre-hedging cost
         total_return_target_pp=round(total_return_target_pp, 4),
         total_return_base_pp=round(total_return_base_pp, 4),
         total_return_pp=round(total_return_target_pp, 4),
@@ -1115,7 +1327,7 @@ def clear_cache():
     return {"status": "Cache cleared", "timestamp": datetime.now().isoformat()}
 
 # ============================================================================
-# FRONTEND
+# FRONTEND & SEO
 # ============================================================================
 
 static_dir = Path(__file__).parent / "static"
@@ -1129,11 +1341,25 @@ def serve_frontend():
         return FileResponse(index_file, media_type="text/html")
     return {"message": "Frontend not found", "api_docs": "/docs"}
 
+@app.get("/robots.txt")
+def serve_robots():
+    robots_file = Path(__file__).parent / "static" / "robots.txt"
+    if robots_file.exists():
+        return FileResponse(robots_file, media_type="text/plain")
+    return "User-agent: *\nAllow: /"
+
+@app.get("/sitemap.xml")
+def serve_sitemap():
+    sitemap_file = Path(__file__).parent / "static" / "sitemap.xml"
+    if sitemap_file.exists():
+        return FileResponse(sitemap_file, media_type="application/xml")
+    raise HTTPException(status_code=404, detail="Sitemap not found")
+
 if __name__ == "__main__":
     import uvicorn
     
     print("\n" + "="*60)
-    print("🚀 Hedged Return Converter v2.1 - LIVE DATA")
+    print("🚀 CrossFX Yield v5.0 - LIVE DATA + PWA")
     print("="*60)
     print("\n📍 Frontend: http://localhost:8000")
     print("📍 API Docs: http://localhost:8000/docs")
@@ -1143,6 +1369,10 @@ if __name__ == "__main__":
     print("   EUR: ECB ✓")
     print("   GBP: BoE ✓")
     print(f"   httpx: {'✓' if HTTPX_AVAILABLE else '✗ pip install httpx'}")
+    print("\n🆕 v5.0 Features:")
+    print("   ✓ Hedging Cost (xccy basis / NDF)")
+    print("   ✓ PWA Support (Install as App)")
+    print("   ✓ SEO Optimized")
     print("\n" + "="*60 + "\n")
     
     uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
