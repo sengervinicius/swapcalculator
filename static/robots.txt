@@ -1,0 +1,15 @@
+# CrossFX Yield - Robots.txt
+# https://crossfx-yield.com/robots.txt
+
+User-agent: *
+Allow: /
+
+# Sitemap location
+Sitemap: https://crossfx-yield.com/sitemap.xml
+
+# Disallow API documentation (optional - remove if you want indexed)
+# Disallow: /docs
+# Disallow: /redoc
+
+# Crawl-delay (be nice to crawlers)
+Crawl-delay: 1
