@@ -1782,6 +1782,360 @@
                 display: none;
             }
         }
+        
+        /* ============================================
+           ANALYSIS TOOLS - Compare, Breakeven, History
+           ============================================ */
+        
+        .analysis-section {
+            margin-top: 24px;
+            padding-top: 24px;
+            border-top: 1px solid var(--border);
+        }
+        
+        .analysis-tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        
+        .analysis-tab {
+            padding: 10px 18px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-family: 'Outfit', sans-serif;
+        }
+        
+        .analysis-tab:hover {
+            border-color: var(--green);
+            color: var(--green);
+        }
+        
+        .analysis-tab.active {
+            background: var(--green-subtle);
+            border-color: var(--green);
+            color: var(--green);
+        }
+        
+        .analysis-tab .tab-icon {
+            margin-right: 6px;
+        }
+        
+        .analysis-content {
+            display: none;
+        }
+        
+        .analysis-content.active {
+            display: block;
+            animation: fadeIn 0.3s ease;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        /* Compare Mode */
+        .compare-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+        
+        .compare-card {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 18px;
+            position: relative;
+        }
+        
+        .compare-card.best {
+            border-color: var(--green);
+            box-shadow: 0 0 20px var(--green-glow);
+        }
+        
+        .compare-card.best::before {
+            content: '★ BEST';
+            position: absolute;
+            top: -10px;
+            right: 16px;
+            background: var(--green);
+            color: var(--bg-primary);
+            font-size: 0.65rem;
+            font-weight: 700;
+            padding: 4px 10px;
+            border-radius: 4px;
+            letter-spacing: 0.5px;
+        }
+        
+        .compare-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--border);
+        }
+        
+        .compare-card-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+        
+        .compare-card-pair {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            background: var(--bg-input);
+            padding: 4px 8px;
+            border-radius: 4px;
+        }
+        
+        .compare-metric {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 0;
+        }
+        
+        .compare-metric:not(:last-child) {
+            border-bottom: 1px dashed var(--border);
+        }
+        
+        .compare-metric-label {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+        
+        .compare-metric-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.9rem;
+            font-weight: 600;
+        }
+        
+        .compare-metric-value.positive { color: var(--green); }
+        .compare-metric-value.negative { color: var(--red); }
+        .compare-metric-value.neutral { color: var(--text-primary); }
+        
+        .compare-net-return {
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 2px solid var(--border);
+            text-align: center;
+        }
+        
+        .compare-net-label {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin-bottom: 4px;
+        }
+        
+        .compare-net-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 1.5rem;
+            font-weight: 700;
+        }
+        
+        /* Breakeven Analysis */
+        .breakeven-container {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+        }
+        
+        .breakeven-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        
+        .breakeven-title {
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+        
+        .breakeven-subtitle {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin-top: 4px;
+        }
+        
+        .breakeven-gauge {
+            position: relative;
+            height: 40px;
+            background: linear-gradient(to right, 
+                var(--green) 0%, 
+                var(--yellow) 50%, 
+                var(--red) 100%);
+            border-radius: 8px;
+            margin: 20px 0;
+            overflow: hidden;
+        }
+        
+        .breakeven-marker {
+            position: absolute;
+            top: -8px;
+            width: 4px;
+            height: 56px;
+            background: var(--text-primary);
+            border-radius: 2px;
+            transform: translateX(-50%);
+            box-shadow: 0 0 10px rgba(0,0,0,0.5);
+        }
+        
+        .breakeven-marker::before {
+            content: attr(data-label);
+            position: absolute;
+            top: -22px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 0.7rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            white-space: nowrap;
+            background: var(--bg-card);
+            padding: 2px 6px;
+            border-radius: 4px;
+        }
+        
+        .breakeven-labels {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin-top: 8px;
+        }
+        
+        .breakeven-metrics {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+            margin-top: 20px;
+        }
+        
+        .breakeven-metric {
+            text-align: center;
+            padding: 16px;
+            background: var(--bg-input);
+            border-radius: 8px;
+        }
+        
+        .breakeven-metric-label {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            margin-bottom: 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .breakeven-metric-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 1.2rem;
+            font-weight: 700;
+        }
+        
+        .breakeven-metric-value.good { color: var(--green); }
+        .breakeven-metric-value.warning { color: var(--yellow); }
+        .breakeven-metric-value.danger { color: var(--red); }
+        
+        .breakeven-verdict {
+            margin-top: 20px;
+            padding: 16px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        
+        .breakeven-verdict.favorable {
+            background: rgba(34, 197, 94, 0.1);
+            border: 1px solid var(--green);
+        }
+        
+        .breakeven-verdict.marginal {
+            background: rgba(234, 179, 8, 0.1);
+            border: 1px solid var(--yellow);
+        }
+        
+        .breakeven-verdict.unfavorable {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid var(--red);
+        }
+        
+        .breakeven-verdict-text {
+            font-size: 0.9rem;
+            font-weight: 500;
+        }
+        
+        .breakeven-verdict.favorable .breakeven-verdict-text { color: var(--green); }
+        .breakeven-verdict.marginal .breakeven-verdict-text { color: var(--yellow); }
+        .breakeven-verdict.unfavorable .breakeven-verdict-text { color: var(--red); }
+        
+        /* Hedge Cost History Chart */
+        .history-container {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+        }
+        
+        .history-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+        
+        .history-title {
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+        
+        .history-chart-container {
+            height: 250px;
+            position: relative;
+        }
+        
+        .history-note {
+            margin-top: 12px;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            text-align: center;
+            font-style: italic;
+        }
+        
+        /* Mobile adjustments for analysis */
+        @media (max-width: 768px) {
+            .analysis-tabs {
+                overflow-x: auto;
+                flex-wrap: nowrap;
+                -webkit-overflow-scrolling: touch;
+            }
+            
+            .analysis-tab {
+                white-space: nowrap;
+                flex-shrink: 0;
+            }
+            
+            .compare-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .breakeven-metrics {
+                grid-template-columns: 1fr;
+            }
+        }
     </style>
 </head>
 <body>
@@ -2060,6 +2414,86 @@
                             </div>
                             <div class="chart-container">
                                 <canvas id="yieldCurveChart"></canvas>
+                            </div>
+                        </div>
+                        
+                        <!-- Analysis Tools Section -->
+                        <div class="analysis-section" id="analysisSection" style="display: none;">
+                            <div class="analysis-tabs">
+                                <button class="analysis-tab active" data-tab="compare">
+                                    <span class="tab-icon">📊</span>Compare
+                                </button>
+                                <button class="analysis-tab" data-tab="breakeven">
+                                    <span class="tab-icon">⚖️</span>Breakeven
+                                </button>
+                                <button class="analysis-tab" data-tab="history">
+                                    <span class="tab-icon">📈</span>Tenor Analysis
+                                </button>
+                            </div>
+                            
+                            <!-- Compare Mode -->
+                            <div class="analysis-content active" id="compareContent">
+                                <div class="compare-grid" id="compareGrid">
+                                    <!-- Cards will be populated dynamically -->
+                                </div>
+                            </div>
+                            
+                            <!-- Breakeven Analysis -->
+                            <div class="analysis-content" id="breakevenContent">
+                                <div class="breakeven-container">
+                                    <div class="breakeven-header">
+                                        <div>
+                                            <div class="breakeven-title">Hedge Cost Breakeven Analysis</div>
+                                            <div class="breakeven-subtitle">At what cost does the trade stop making sense?</div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="breakeven-gauge" id="breakevenGauge">
+                                        <div class="breakeven-marker" id="currentCostMarker" data-label="Current"></div>
+                                        <div class="breakeven-marker" id="breakevenMarker" data-label="Breakeven" style="background: var(--yellow);"></div>
+                                    </div>
+                                    <div class="breakeven-labels">
+                                        <span>Profitable</span>
+                                        <span>Marginal</span>
+                                        <span>Loss</span>
+                                    </div>
+                                    
+                                    <div class="breakeven-metrics">
+                                        <div class="breakeven-metric">
+                                            <div class="breakeven-metric-label">Current Hedge Cost</div>
+                                            <div class="breakeven-metric-value" id="currentHedgeCostMetric">—</div>
+                                        </div>
+                                        <div class="breakeven-metric">
+                                            <div class="breakeven-metric-label">Breakeven Cost</div>
+                                            <div class="breakeven-metric-value" id="breakevenCostMetric">—</div>
+                                        </div>
+                                        <div class="breakeven-metric">
+                                            <div class="breakeven-metric-label">Cushion</div>
+                                            <div class="breakeven-metric-value" id="cushionMetric">—</div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="breakeven-verdict" id="breakevenVerdict">
+                                        <div class="breakeven-verdict-text" id="breakevenVerdictText">
+                                            Calculate results to see breakeven analysis
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Tenor Analysis (Hedge Cost Across Tenors) -->
+                            <div class="analysis-content" id="historyContent">
+                                <div class="history-container">
+                                    <div class="history-header">
+                                        <div class="history-title">Hedge Cost by Tenor</div>
+                                    </div>
+                                    <div class="history-chart-container">
+                                        <canvas id="tenorAnalysisChart"></canvas>
+                                    </div>
+                                    <div class="history-note">
+                                        Shows estimated hedge costs at different tenors for the selected currency pair
+                                    </div>
+                                </div>
                             </div>
                         </div>
                         
@@ -3055,6 +3489,9 @@
                 // Update chart
                 await updateChart();
                 
+                // Update analysis tools
+                updateAnalysisSection();
+                
                 resultsCard.classList.add('show');
                 resultsCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
                 
@@ -3103,6 +3540,284 @@
         if (isIOS() && !isInStandaloneMode()) {
             // Could show a custom banner here prompting "Add to Home Screen"
             console.log('ℹ️ iOS detected - app can be installed via Share > Add to Home Screen');
+        }
+        
+        // ============================================
+        // ANALYSIS TOOLS
+        // ============================================
+        
+        let tenorAnalysisChart = null;
+        
+        // Tab switching
+        document.querySelectorAll('.analysis-tab').forEach(tab => {
+            tab.addEventListener('click', function() {
+                // Update active tab
+                document.querySelectorAll('.analysis-tab').forEach(t => t.classList.remove('active'));
+                this.classList.add('active');
+                
+                // Update active content
+                const tabName = this.dataset.tab;
+                document.querySelectorAll('.analysis-content').forEach(c => c.classList.remove('active'));
+                document.getElementById(tabName + 'Content').classList.add('active');
+                
+                // Initialize charts if needed
+                if (tabName === 'history' && calculatedResults.length > 0) {
+                    updateTenorAnalysisChart();
+                }
+            });
+        });
+        
+        // Main function to update all analysis sections
+        function updateAnalysisSection() {
+            if (calculatedResults.length === 0) {
+                document.getElementById('analysisSection').style.display = 'none';
+                return;
+            }
+            
+            document.getElementById('analysisSection').style.display = 'block';
+            
+            updateCompareCards();
+            updateBreakevenAnalysis();
+            updateTenorAnalysisChart();
+        }
+        
+        // Compare Mode - Side by side comparison
+        function updateCompareCards() {
+            const grid = document.getElementById('compareGrid');
+            grid.innerHTML = '';
+            
+            if (calculatedResults.length === 0) return;
+            
+            const baseCurrency = document.getElementById('baseCurrency').value;
+            const tenor = parseFloat(document.getElementById('tenor').value) || 5;
+            
+            // Find the best result (highest net return)
+            let bestIndex = 0;
+            let bestReturn = -Infinity;
+            calculatedResults.forEach((result, index) => {
+                if (result.hedged_return_pp > bestReturn) {
+                    bestReturn = result.hedged_return_pp;
+                    bestIndex = index;
+                }
+            });
+            
+            calculatedResults.forEach((result, index) => {
+                const hasHedgingCost = result.hedging_cost_bps !== null && result.hedging_cost_bps !== undefined;
+                const hedgeCostPct = hasHedgingCost ? (result.hedging_cost_bps / 100) : 0;
+                const isBest = index === bestIndex && calculatedResults.length > 1;
+                
+                const card = document.createElement('div');
+                card.className = 'compare-card' + (isBest ? ' best' : '');
+                
+                // Calculate pickup vs base
+                const pickup = result.hedged_return_pp - result.all_in_base_pp;
+                const pickupClass = pickup >= 0 ? 'positive' : 'negative';
+                const pickupSign = pickup >= 0 ? '+' : '';
+                
+                card.innerHTML = `
+                    <div class="compare-card-header">
+                        <span class="compare-card-title">${result.target_currency}</span>
+                        <span class="compare-card-pair">${baseCurrency} → ${result.target_currency}</span>
+                    </div>
+                    
+                    <div class="compare-metric">
+                        <span class="compare-metric-label">Base Rate (${baseCurrency})</span>
+                        <span class="compare-metric-value neutral">${result.all_in_base_pp.toFixed(2)}%</span>
+                    </div>
+                    
+                    <div class="compare-metric">
+                        <span class="compare-metric-label">Hedged Return (pre-cost)</span>
+                        <span class="compare-metric-value neutral">${result.usd_equiv_pp.toFixed(2)}%</span>
+                    </div>
+                    
+                    ${hasHedgingCost ? `
+                    <div class="compare-metric">
+                        <span class="compare-metric-label">Hedge Cost</span>
+                        <span class="compare-metric-value ${result.hedging_cost_bps >= 0 ? 'positive' : 'negative'}">
+                            ${result.hedging_cost_bps >= 0 ? '+' : ''}${result.hedging_cost_bps.toFixed(0)} bps
+                        </span>
+                    </div>
+                    ` : ''}
+                    
+                    <div class="compare-metric">
+                        <span class="compare-metric-label">Pickup vs Base</span>
+                        <span class="compare-metric-value ${pickupClass}">${pickupSign}${pickup.toFixed(2)}%</span>
+                    </div>
+                    
+                    <div class="compare-net-return">
+                        <div class="compare-net-label">Net Hedged Return (p.a.)</div>
+                        <div class="compare-net-value ${result.hedged_return_pp >= result.all_in_base_pp ? 'positive' : 'negative'}">
+                            ${result.hedged_return_pp.toFixed(2)}%
+                        </div>
+                    </div>
+                `;
+                
+                grid.appendChild(card);
+            });
+        }
+        
+        // Breakeven Analysis
+        function updateBreakevenAnalysis() {
+            const result = calculatedResults[0];
+            if (!result) return;
+            
+            const hasHedgingCost = result.hedging_cost_bps !== null && result.hedging_cost_bps !== undefined;
+            const currentHedgeCost = hasHedgingCost ? result.hedging_cost_bps : 0;
+            
+            // Calculate breakeven: what hedge cost makes net return = base return?
+            // net_return = hedged_return - hedge_cost
+            // breakeven when: net_return = base_return
+            // So: breakeven_cost = hedged_return - base_return (in pp, convert to bps)
+            const hedgedReturnPreCost = result.usd_equiv_pp;
+            const baseReturn = result.all_in_base_pp;
+            const breakevenCostBps = (hedgedReturnPreCost - baseReturn) * 100;
+            
+            // Cushion: how much room before breakeven
+            const cushionBps = breakevenCostBps - currentHedgeCost;
+            
+            // Update metrics
+            const currentEl = document.getElementById('currentHedgeCostMetric');
+            currentEl.textContent = `${currentHedgeCost >= 0 ? '+' : ''}${currentHedgeCost.toFixed(0)} bps`;
+            currentEl.className = 'breakeven-metric-value ' + (currentHedgeCost >= 0 ? 'good' : 'danger');
+            
+            const breakevenEl = document.getElementById('breakevenCostMetric');
+            breakevenEl.textContent = `${breakevenCostBps >= 0 ? '+' : ''}${breakevenCostBps.toFixed(0)} bps`;
+            breakevenEl.className = 'breakeven-metric-value warning';
+            
+            const cushionEl = document.getElementById('cushionMetric');
+            cushionEl.textContent = `${cushionBps >= 0 ? '+' : ''}${cushionBps.toFixed(0)} bps`;
+            cushionEl.className = 'breakeven-metric-value ' + (cushionBps > 50 ? 'good' : cushionBps > 0 ? 'warning' : 'danger');
+            
+            // Update gauge positions
+            // Gauge goes from -500 bps to +500 bps (or dynamically based on values)
+            const gaugeMin = Math.min(-300, currentHedgeCost - 100, breakevenCostBps - 100);
+            const gaugeMax = Math.max(300, currentHedgeCost + 100, breakevenCostBps + 100);
+            const gaugeRange = gaugeMax - gaugeMin;
+            
+            const currentPos = ((currentHedgeCost - gaugeMin) / gaugeRange) * 100;
+            const breakevenPos = ((breakevenCostBps - gaugeMin) / gaugeRange) * 100;
+            
+            document.getElementById('currentCostMarker').style.left = `${Math.max(5, Math.min(95, currentPos))}%`;
+            document.getElementById('currentCostMarker').dataset.label = `Current: ${currentHedgeCost >= 0 ? '+' : ''}${currentHedgeCost.toFixed(0)}`;
+            
+            document.getElementById('breakevenMarker').style.left = `${Math.max(5, Math.min(95, breakevenPos))}%`;
+            document.getElementById('breakevenMarker').dataset.label = `B/E: ${breakevenCostBps >= 0 ? '+' : ''}${breakevenCostBps.toFixed(0)}`;
+            
+            // Update verdict
+            const verdictEl = document.getElementById('breakevenVerdict');
+            const verdictTextEl = document.getElementById('breakevenVerdictText');
+            
+            if (cushionBps > 100) {
+                verdictEl.className = 'breakeven-verdict favorable';
+                verdictTextEl.textContent = `✅ Trade is FAVORABLE with ${cushionBps.toFixed(0)} bps cushion before breakeven`;
+            } else if (cushionBps > 0) {
+                verdictEl.className = 'breakeven-verdict marginal';
+                verdictTextEl.textContent = `⚠️ Trade is MARGINAL — only ${cushionBps.toFixed(0)} bps cushion. Monitor hedge costs closely.`;
+            } else {
+                verdictEl.className = 'breakeven-verdict unfavorable';
+                verdictTextEl.textContent = `❌ Trade is UNFAVORABLE — hedge cost exceeds pickup by ${Math.abs(cushionBps).toFixed(0)} bps`;
+            }
+        }
+        
+        // Tenor Analysis Chart
+        async function updateTenorAnalysisChart() {
+            const baseCurrency = document.getElementById('baseCurrency').value;
+            const targetRows = document.querySelectorAll('.target-currency');
+            const targetCurrency = targetRows.length > 0 ? targetRows[0].value : '';
+            
+            if (!baseCurrency || !targetCurrency) return;
+            
+            // Fetch hedge costs for different tenors
+            const tenors = [1, 2, 3, 5, 7, 10];
+            const hedgeCosts = [];
+            
+            for (const t of tenors) {
+                try {
+                    const res = await fetch(`${API_BASE}/hedging-cost/${baseCurrency}/${targetCurrency}?tenor=${t}`);
+                    const data = await res.json();
+                    hedgeCosts.push(data.cost_bps);
+                } catch (e) {
+                    hedgeCosts.push(null);
+                }
+            }
+            
+            const ctx = document.getElementById('tenorAnalysisChart').getContext('2d');
+            
+            if (tenorAnalysisChart) {
+                tenorAnalysisChart.destroy();
+            }
+            
+            tenorAnalysisChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: tenors.map(t => t + 'Y'),
+                    datasets: [{
+                        label: `${baseCurrency} → ${targetCurrency} Hedge Cost`,
+                        data: hedgeCosts,
+                        borderColor: '#22c55e',
+                        backgroundColor: 'rgba(34, 197, 94, 0.1)',
+                        fill: true,
+                        tension: 0.3,
+                        pointRadius: 6,
+                        pointHoverRadius: 8,
+                        pointBackgroundColor: '#22c55e',
+                        pointBorderColor: '#0a0a0b',
+                        pointBorderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top',
+                            labels: {
+                                color: '#a1a1aa',
+                                font: { family: 'Outfit', size: 12 }
+                            }
+                        },
+                        tooltip: {
+                            backgroundColor: '#1a1a1d',
+                            titleColor: '#fafafa',
+                            bodyColor: '#a1a1aa',
+                            borderColor: '#2a2a2e',
+                            borderWidth: 1,
+                            padding: 12,
+                            callbacks: {
+                                label: function(context) {
+                                    const val = context.parsed.y;
+                                    return `Hedge Cost: ${val >= 0 ? '+' : ''}${val?.toFixed(0) || '—'} bps`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: { color: '#2a2a2e' },
+                            ticks: { color: '#71717a', font: { family: 'Outfit' } },
+                            title: {
+                                display: true,
+                                text: 'Tenor',
+                                color: '#71717a'
+                            }
+                        },
+                        y: {
+                            grid: { color: '#2a2a2e' },
+                            ticks: { 
+                                color: '#71717a', 
+                                font: { family: 'JetBrains Mono' },
+                                callback: function(value) { return value + ' bps'; }
+                            },
+                            title: {
+                                display: true,
+                                text: 'Hedge Cost (bps)',
+                                color: '#71717a'
+                            }
+                        }
+                    }
+                }
+            });
         }
         
         // Init
