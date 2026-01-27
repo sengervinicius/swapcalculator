@@ -658,6 +658,282 @@
             to { opacity: 1; transform: translateY(0); }
         }
         
+        /* Methodology Info Button */
+        .methodology-info-btn {
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            border: 1px solid var(--border-light);
+            background: var(--bg-tertiary);
+            color: var(--text-muted);
+            font-size: 0.65rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            margin-left: 6px;
+        }
+        
+        .methodology-info-btn:hover {
+            border-color: var(--cyan);
+            color: var(--cyan);
+            background: rgba(6, 182, 212, 0.1);
+        }
+        
+        /* Methodology Modal */
+        .methodology-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 1000;
+            overflow-y: auto;
+            padding: 20px;
+        }
+        
+        .methodology-modal.show {
+            display: flex;
+            align-items: flex-start;
+            justify-content: center;
+            animation: fadeIn 0.2s ease;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        .methodology-content {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            max-width: 640px;
+            width: 100%;
+            margin: 40px auto;
+            overflow: hidden;
+            animation: slideUp 0.3s ease;
+        }
+        
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .methodology-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 20px 24px;
+            border-bottom: 1px solid var(--border);
+            background: var(--bg-tertiary);
+        }
+        
+        .methodology-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .methodology-title-icon {
+            font-size: 1.3rem;
+        }
+        
+        .methodology-close {
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            background: transparent;
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-size: 1.2rem;
+            transition: all 0.2s ease;
+        }
+        
+        .methodology-close:hover {
+            background: var(--red);
+            border-color: var(--red);
+            color: white;
+        }
+        
+        .methodology-body {
+            padding: 24px;
+        }
+        
+        .methodology-section {
+            margin-bottom: 24px;
+        }
+        
+        .methodology-section:last-child {
+            margin-bottom: 0;
+        }
+        
+        .methodology-section-title {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--cyan);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .methodology-section-title::before {
+            content: '';
+            width: 3px;
+            height: 14px;
+            background: var(--cyan);
+            border-radius: 2px;
+        }
+        
+        .methodology-text {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            line-height: 1.6;
+            margin-bottom: 12px;
+        }
+        
+        .methodology-formula {
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 16px;
+            margin: 12px 0;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+        }
+        
+        .methodology-formula-main {
+            color: var(--green);
+            font-weight: 600;
+            font-size: 1rem;
+            margin-bottom: 8px;
+        }
+        
+        .methodology-formula-vars {
+            color: var(--text-muted);
+            font-size: 0.8rem;
+        }
+        
+        .methodology-formula-vars span {
+            color: var(--text-secondary);
+        }
+        
+        .methodology-example {
+            background: var(--bg-tertiary);
+            border-left: 3px solid var(--green);
+            padding: 12px 16px;
+            border-radius: 0 8px 8px 0;
+            margin: 12px 0;
+        }
+        
+        .methodology-example-title {
+            font-size: 0.75rem;
+            color: var(--green);
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 8px;
+        }
+        
+        .methodology-example-calc {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+            color: var(--text-primary);
+        }
+        
+        .methodology-data-sources {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+            margin-top: 12px;
+        }
+        
+        .methodology-data-source {
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 12px;
+        }
+        
+        .methodology-data-source-name {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+            margin-bottom: 4px;
+        }
+        
+        .methodology-data-source-value {
+            font-size: 0.9rem;
+            font-weight: 500;
+            color: var(--text-primary);
+        }
+        
+        .methodology-data-source-badge {
+            display: inline-block;
+            font-size: 0.65rem;
+            padding: 2px 6px;
+            background: var(--green-subtle);
+            color: var(--green);
+            border-radius: 4px;
+            margin-left: 6px;
+            font-weight: 600;
+        }
+        
+        .methodology-warning {
+            background: rgba(234, 179, 8, 0.1);
+            border: 1px solid rgba(234, 179, 8, 0.3);
+            border-radius: 8px;
+            padding: 12px 16px;
+            margin-top: 12px;
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+        }
+        
+        .methodology-warning-icon {
+            font-size: 1rem;
+            color: var(--yellow);
+            flex-shrink: 0;
+        }
+        
+        .methodology-warning-text {
+            font-size: 0.8rem;
+            color: var(--yellow);
+            line-height: 1.5;
+        }
+        
+        .methodology-footer {
+            padding: 16px 24px;
+            border-top: 1px solid var(--border);
+            background: var(--bg-tertiary);
+        }
+        
+        .methodology-ref {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+        
+        .methodology-ref a {
+            color: var(--cyan);
+            text-decoration: none;
+        }
+        
+        .methodology-ref a:hover {
+            text-decoration: underline;
+        }
+        
         .hedging-cost-suggested {
             display: flex;
             align-items: center;
@@ -1640,6 +1916,7 @@
                             <div class="hedging-cost-info">
                                 <span class="hedging-cost-label">
                                     Suggested Cost
+                                    <button type="button" class="methodology-info-btn" id="showMethodologyBtn" title="View methodology">?</button>
                                     <span class="applied-badge">✓ Applied</span>
                                 </span>
                                 <div class="hedging-cost-value">
@@ -2592,6 +2869,131 @@
         
         // Init
         checkStatus();
+    </script>
+    
+    <!-- Hedge Cost Methodology Modal -->
+    <div class="methodology-modal" id="methodologyModal">
+        <div class="methodology-content">
+            <div class="methodology-header">
+                <span class="methodology-title">
+                    <span class="methodology-title-icon">📊</span>
+                    Hedge Cost Methodology
+                </span>
+                <button type="button" class="methodology-close" id="closeMethodologyBtn">×</button>
+            </div>
+            
+            <div class="methodology-body">
+                <div class="methodology-section">
+                    <div class="methodology-section-title">Core Formula (USD → BRL)</div>
+                    <div class="methodology-text">
+                        The hedge cost/benefit is calculated as the difference between the <strong>implied USD rate</strong> in Brazil and the <strong>actual USD rate</strong>:
+                    </div>
+                    <div class="methodology-formula">
+                        <div class="methodology-formula-main">Hedge Benefit (bps) = (Cupom Cambial − SOFR) × 100</div>
+                        <div class="methodology-formula-vars">
+                            <span>Cupom Cambial</span> = Implied USD rate in Brazil (from B3 futures)<br>
+                            <span>SOFR</span> = Secured Overnight Financing Rate (actual USD rate)
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="methodology-section">
+                    <div class="methodology-section-title">Data Sources</div>
+                    <div class="methodology-data-sources">
+                        <div class="methodology-data-source">
+                            <div class="methodology-data-source-name">Cupom Cambial</div>
+                            <div class="methodology-data-source-value">
+                                B3 (Brasil, Bolsa, Balcão)
+                                <span class="methodology-data-source-badge">FREE</span>
+                            </div>
+                        </div>
+                        <div class="methodology-data-source">
+                            <div class="methodology-data-source-name">SOFR</div>
+                            <div class="methodology-data-source-value">
+                                FRED (St. Louis Fed)
+                                <span class="methodology-data-source-badge">FREE</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="methodology-section">
+                    <div class="methodology-section-title">Example Calculation</div>
+                    <div class="methodology-example">
+                        <div class="methodology-example-title">Current Market (Illustrative)</div>
+                        <div class="methodology-example-calc">
+                            Cupom Cambial (5Y): 5.25% p.a.<br>
+                            SOFR: 4.30% p.a.<br>
+                            ────────────────────────<br>
+                            Hedge Benefit: (5.25 − 4.30) × 100 = <strong>+95 bps</strong>
+                        </div>
+                    </div>
+                    <div class="methodology-text">
+                        A <strong>positive</strong> value means you <em>benefit</em> from hedging (the implied USD rate in Brazil exceeds actual USD funding). A <strong>negative</strong> value would mean a hedging <em>cost</em>.
+                    </div>
+                </div>
+                
+                <div class="methodology-section">
+                    <div class="methodology-section-title">Why Cupom Cambial?</div>
+                    <div class="methodology-text">
+                        The Cupom Cambial already incorporates the <strong>convertibility premium</strong> — the cost of USD being "trapped" in Brazil's financial system vs. freely tradeable offshore USD. This is why:
+                    </div>
+                    <div class="methodology-formula">
+                        <div class="methodology-formula-vars">
+                            <span>Theoretical max gain</span> = CDI − SOFR ≈ 900 bps<br>
+                            <span>Actual hedge gain</span> = Cupom Cambial − SOFR ≈ 50-150 bps<br>
+                            <span>Difference</span> = Convertibility Premium (already priced in)
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="methodology-section">
+                    <div class="methodology-section-title">Additional Components (Not Included)</div>
+                    <div class="methodology-warning">
+                        <span class="methodology-warning-icon">⚠️</span>
+                        <span class="methodology-warning-text">
+                            This calculation represents the <strong>expected</strong> hedge cost/benefit based on current market rates. 
+                            It does not include: (1) Transaction costs (bid-offer spreads), (2) Slippage from discrete hedging, 
+                            (3) Model uncertainty. For a complete analysis, consider using the manual override with your institution's 
+                            specific hedging parameters.
+                        </span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="methodology-footer">
+                <div class="methodology-ref">
+                    Based on CIP (Covered Interest Parity) principles. 
+                    See: <a href="https://ssrn.com/abstract=3924377" target="_blank" rel="noopener">Patry & Mozley (2021) "Future Hedging Costs: Back to Basics"</a>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Methodology Modal Logic
+        document.getElementById('showMethodologyBtn').addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            document.getElementById('methodologyModal').classList.add('show');
+        });
+        
+        document.getElementById('closeMethodologyBtn').addEventListener('click', function() {
+            document.getElementById('methodologyModal').classList.remove('show');
+        });
+        
+        document.getElementById('methodologyModal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                this.classList.remove('show');
+            }
+        });
+        
+        // Close on Escape key
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                document.getElementById('methodologyModal').classList.remove('show');
+            }
+        });
     </script>
 </body>
 </html>
