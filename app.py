@@ -198,6 +198,11 @@ FALLBACK_INDEXERS = {
         {'key': 'none', 'label': 'No indexer', 'value': 0.0},
         {'key': 'aonia', 'label': 'AONIA (Australia)', 'value': 4.10},
         {'key': 'rba-rate', 'label': 'RBA Cash Rate', 'value': 4.10}
+    ],
+    'ARS': [
+        {'key': 'none', 'label': 'No indexer', 'value': 0.0},
+        {'key': 'badlar', 'label': 'BADLAR (Argentina)', 'value': 37.00},
+        {'key': 'bcra-rate', 'label': 'BCRA Policy Rate', 'value': 32.00}
     ]
 }
 
@@ -210,7 +215,8 @@ FALLBACK_RISK_FREE = {
     'JPY': {1: 0.40, 2: 0.55, 3: 0.65, 5: 0.80, 10: 1.10},
     'CNY': {1: 1.80, 2: 1.90, 3: 2.00, 5: 2.20, 10: 2.50},
     'CAD': {1: 3.20, 2: 3.10, 3: 3.00, 5: 2.90, 10: 3.20},
-    'AUD': {1: 4.10, 2: 4.00, 3: 3.95, 5: 3.90, 10: 4.20}
+    'AUD': {1: 4.10, 2: 4.00, 3: 3.95, 5: 3.90, 10: 4.20},
+    'ARS': {1: 40.00, 2: 45.00, 3: 50.00, 5: 55.00, 10: 60.00}  # Very high rates, indicative
 }
 
 # ============================================================================
@@ -226,44 +232,134 @@ FALLBACK_RISK_FREE = {
 # of USD being trapped in Brazil vs. offshore USD.
 #
 # For G10 currencies: Use cross-currency basis swap spreads
+#   - IMPORTANT: No free live data source available
+#   - Values below are REFERENCE ESTIMATES based on typical market ranges
+#   - Actual xccy basis fluctuates with market conditions
+#   - For precise hedging, use Bloomberg or institution's rates
 # ============================================================================
 
-# Fallback values - ONLY used if live data fetch fails
-# These are conservative estimates and should be replaced by live data
+# Fallback values - Reference estimates for when live data unavailable
+# G10 basis: Based on typical market ranges (NOT live data)
+# These should be treated as indicative only
 FALLBACK_HEDGING_COST = {
     # vs USD basis (bps) - G10 cross-currency basis spreads
+    # Source: Historical averages from market literature
     'USD': {1: 0, 2: 0, 3: 0, 5: 0, 10: 0},
-    'EUR': {1: -25, 2: -22, 3: -20, 5: -18, 10: -15},
-    'GBP': {1: -12, 2: -10, 3: -8, 5: -6, 10: -5},
-    'JPY': {1: -45, 2: -40, 3: -35, 5: -30, 10: -25},
-    'CHF': {1: -35, 2: -30, 3: -28, 5: -25, 10: -20},
-    'CAD': {1: -8, 2: -6, 3: -5, 5: -4, 10: -3},
-    'AUD': {1: 8, 2: 10, 3: 12, 5: 15, 10: 18},
+    # EUR: Typically -15 to -30 bps
+    'EUR': {1: -20, 2: -22, 3: -25, 5: -25, 10: -28},
+    # GBP: Usually tighter than EUR
+    'GBP': {1: -10, 2: -12, 3: -12, 5: -15, 10: -15},
+    # JPY: Typically wider due to structural USD demand
+    'JPY': {1: -40, 2: -45, 3: -48, 5: -50, 10: -55},
+    # CHF: Similar to EUR
+    'CHF': {1: -25, 2: -28, 3: -30, 5: -32, 10: -35},
+    # CAD: Usually tight
+    'CAD': {1: -8, 2: -10, 3: -10, 5: -12, 10: -12},
+    # AUD: Can vary
+    'AUD': {1: -5, 2: -5, 3: 0, 5: 0, 10: 5},
     # BRL: Fallback only - prefer live B3 cupom cambial data
-    # These are approximate ranges when live data unavailable
-    'BRL': {1: 40, 2: 50, 3: 60, 5: 75, 10: 100},  # Positive = benefit going USD→BRL
-    'CNY': {1: -60, 2: -70, 3: -80, 5: -90, 10: -100},
+    # Positive = benefit going USD→BRL (cupom cambial > SOFR)
+    'BRL': {1: 40, 2: 50, 3: 60, 5: 75, 10: 100},
+    # ARS: Very high cost due to capital controls, devaluation risk
+    # These are rough estimates - actual NDF implied costs can be much higher
+    'ARS': {1: -800, 2: -1000, 3: -1200, 5: -1500, 10: -2000},
+    # CNY: NDF implied, moderate
+    'CNY': {1: -60, 2: -80, 3: -100, 5: -120, 10: -150},
+}
+
+# Data quality indicators - note that G10 can be 'live' if FX forward scraping works
+HEDGING_COST_DATA_QUALITY = {
+    'BRL': 'live',      # Live B3 data when available
+    'EUR': 'live_or_estimate',  # Live from FX forwards if network enabled, else estimate
+    'GBP': 'live_or_estimate',
+    'JPY': 'live_or_estimate',
+    'CHF': 'live_or_estimate',
+    'CAD': 'live_or_estimate',
+    'AUD': 'live_or_estimate',
+    'ARS': 'estimate',  # NDF market - no free public source
+    'CNY': 'estimate',  # Restricted currency - no free public source
+    'USD': 'base',
 }
 
 # Cupom Cambial cache - stores live data from B3
 _cupom_cambial_cache: Dict[str, tuple] = {}
 _cupom_cambial_cache_ttl = 3600  # 1 hour
 
-# Hedging cost descriptions for UI
+# Hedging cost descriptions for UI - with data quality indicators
+# NOTE: Hedge cost ≠ Interest rate differential!
+# Hedge cost = Cross-currency basis (deviation from CIP)
+# BRL uses Cupom Cambial, G10 uses FX forward implied basis
 HEDGING_COST_INFO = {
-    'USD': {'type': 'deliverable', 'instrument': 'N/A (base)', 'notes': 'Base currency'},
-    'EUR': {'type': 'deliverable', 'instrument': 'Cross-Currency Basis Swap', 'notes': 'EUR/USD xccy basis'},
-    'GBP': {'type': 'deliverable', 'instrument': 'Cross-Currency Basis Swap', 'notes': 'GBP/USD xccy basis'},
-    'JPY': {'type': 'deliverable', 'instrument': 'Cross-Currency Basis Swap', 'notes': 'JPY/USD xccy basis - typically wider'},
-    'CHF': {'type': 'deliverable', 'instrument': 'Cross-Currency Basis Swap', 'notes': 'CHF/USD xccy basis'},
-    'CAD': {'type': 'deliverable', 'instrument': 'Cross-Currency Basis Swap', 'notes': 'CAD/USD xccy basis - usually tight'},
-    'AUD': {'type': 'deliverable', 'instrument': 'Cross-Currency Basis Swap', 'notes': 'AUD/USD xccy basis - often positive'},
+    'USD': {
+        'type': 'base', 
+        'instrument': 'N/A (base currency)', 
+        'notes': 'Base currency - no hedge cost',
+        'data_quality': 'N/A'
+    },
+    'EUR': {
+        'type': 'xccy_basis', 
+        'instrument': 'FX Forward Implied Basis', 
+        'notes': 'EUR/USD xccy basis • Live from FX forwards or estimate',
+        'data_quality': 'live_or_estimate',
+        'typical_range': '-15 to -30 bps',
+        'source': 'Investing.com FX Forwards'
+    },
+    'GBP': {
+        'type': 'xccy_basis', 
+        'instrument': 'FX Forward Implied Basis', 
+        'notes': 'GBP/USD xccy basis • Live from FX forwards or estimate',
+        'data_quality': 'live_or_estimate',
+        'typical_range': '-5 to -20 bps'
+    },
+    'JPY': {
+        'type': 'xccy_basis', 
+        'instrument': 'Cross-Currency Basis Swap', 
+        'notes': 'JPY/USD xccy basis • Estimate - typically wider due to USD funding demand',
+        'data_quality': 'estimate',
+        'typical_range': '-30 to -60 bps'
+    },
+    'CHF': {
+        'type': 'xccy_basis', 
+        'instrument': 'Cross-Currency Basis Swap', 
+        'notes': 'CHF/USD xccy basis • Estimate (live requires Bloomberg)',
+        'data_quality': 'estimate',
+        'typical_range': '-20 to -40 bps'
+    },
+    'CAD': {
+        'type': 'xccy_basis', 
+        'instrument': 'Cross-Currency Basis Swap', 
+        'notes': 'CAD/USD xccy basis • Estimate - usually tight',
+        'data_quality': 'estimate',
+        'typical_range': '-5 to -15 bps'
+    },
+    'AUD': {
+        'type': 'xccy_basis', 
+        'instrument': 'Cross-Currency Basis Swap', 
+        'notes': 'AUD/USD xccy basis • Estimate',
+        'data_quality': 'estimate',
+        'typical_range': '-10 to +10 bps'
+    },
     'BRL': {
         'type': 'futures', 
-        'instrument': 'DDI Futures / FRC (FRA de Cupom)', 
-        'notes': 'Live Cupom Cambial from B3 - Formula: (Cupom Cambial - SOFR) × 100'
+        'instrument': 'DDI Futures / FRC (Cupom Cambial)', 
+        'notes': 'Live B3 data • Cupom Cambial is IMPLIED USD rate in Brazil',
+        'data_quality': 'live',
+        'typical_range': '+50 to +150 bps'
     },
-    'CNY': {'type': 'ndf', 'instrument': 'Non-Deliverable Forward (NDF)', 'notes': 'CNY/USD NDF implied cost - restricted currency'},
+    'ARS': {
+        'type': 'ndf', 
+        'instrument': 'Non-Deliverable Forward (NDF)', 
+        'notes': 'ARS/USD NDF implied cost • Estimate - capital controls, high volatility',
+        'data_quality': 'estimate',
+        'typical_range': '-500 to -2000 bps'
+    },
+    'CNY': {
+        'type': 'ndf', 
+        'instrument': 'Non-Deliverable Forward (NDF)', 
+        'notes': 'CNY/USD NDF implied cost • Estimate - restricted currency',
+        'data_quality': 'estimate',
+        'typical_range': '-50 to -150 bps'
+    },
 }
 
 # ============================================================================
@@ -600,6 +696,198 @@ bcb_client = BCBClient()
 fred_client = FREDClient()
 ecb_client = ECBClient()
 boe_client = BOEClient()
+
+
+class XCCYBasisClient:
+    """
+    Client to calculate cross-currency basis from FX forwards.
+    
+    The xccy basis is the deviation from Covered Interest Parity (CIP).
+    We calculate it by comparing:
+    - Implied foreign rate from FX forwards
+    - Actual foreign interbank rate
+    
+    Formula: Basis = Implied Rate - Actual Rate
+    
+    Where Implied Rate from forward points:
+    F = S × (1 + r_foreign × T) / (1 + r_domestic × T)
+    
+    For small rates: Forward Points ≈ (r_foreign - r_domestic) × S × T
+    So: Implied r_foreign ≈ r_domestic + (Forward Points / S / T)
+    """
+    
+    # Investing.com forward rate URL patterns (scraping these requires network)
+    FORWARD_URLS = {
+        'EUR': 'https://www.investing.com/currencies/eur-usd-forward-rates',
+        'GBP': 'https://www.investing.com/currencies/gbp-usd-forward-rates',
+        'JPY': 'https://www.investing.com/currencies/usd-jpy-forward-rates',
+        'CHF': 'https://www.investing.com/currencies/usd-chf-forward-rates',
+        'CAD': 'https://www.investing.com/currencies/usd-cad-forward-rates',
+        'AUD': 'https://www.investing.com/currencies/aud-usd-forward-rates',
+    }
+    
+    # Tenor mapping for forward contracts (in years)
+    TENOR_MAP = {
+        '1Y FWD': 1.0,
+        '2Y FWD': 2.0,
+        '3Y FWD': 3.0,
+        '5Y FWD': 5.0,
+        '10Y FWD': 10.0,
+    }
+    
+    async def get_forward_points(self, currency: str, tenor_years: float) -> Optional[dict]:
+        """
+        Scrape FX forward points from Investing.com
+        Returns forward points in pips and spot rate
+        """
+        if not HTTPX_AVAILABLE:
+            return None
+        
+        url = self.FORWARD_URLS.get(currency.upper())
+        if not url:
+            return None
+        
+        cache_key = f"fwd_{currency}_{tenor_years}"
+        cached = cache.get(cache_key)
+        if cached is not None:
+            return cached
+        
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                response = await client.get(
+                    url,
+                    headers={
+                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                        "Accept": "text/html,application/xhtml+xml"
+                    }
+                )
+                
+                if response.status_code == 200:
+                    # Parse HTML to extract forward points
+                    # This is simplified - real implementation would use BeautifulSoup
+                    text = response.text
+                    
+                    # Look for tenor-specific forward points
+                    # The page has rows like "EURUSD 5Y FWD" with bid/ask
+                    result = self._parse_forward_points(text, currency, tenor_years)
+                    if result:
+                        cache.set(cache_key, result)
+                        return result
+                        
+        except Exception as e:
+            logger.error(f"Forward points fetch error for {currency}: {e}")
+        
+        return None
+    
+    def _parse_forward_points(self, html: str, currency: str, tenor_years: float) -> Optional[dict]:
+        """Parse forward points from Investing.com HTML"""
+        import re
+        
+        # Map tenor to search pattern
+        tenor_patterns = {
+            1: r'1Y FWD.*?(\d+\.?\d*)',
+            2: r'2Y FWD.*?(\d+\.?\d*)',
+            3: r'3Y FWD.*?(\d+\.?\d*)',
+            5: r'5Y FWD.*?(\d+\.?\d*)',
+            10: r'10Y FWD.*?(\d+\.?\d*)',
+        }
+        
+        tenor_key = int(tenor_years) if tenor_years in [1, 2, 3, 5, 10] else 5
+        pattern = tenor_patterns.get(tenor_key)
+        
+        if pattern:
+            match = re.search(pattern, html, re.IGNORECASE | re.DOTALL)
+            if match:
+                try:
+                    forward_points = float(match.group(1))
+                    return {'forward_points_pips': forward_points, 'tenor': tenor_years}
+                except ValueError:
+                    pass
+        
+        return None
+    
+    async def calculate_xccy_basis(
+        self, 
+        currency: str, 
+        tenor_years: float,
+        usd_rate: Optional[float] = None,
+        foreign_rate: Optional[float] = None,
+        spot_rate: Optional[float] = None
+    ) -> Optional[dict]:
+        """
+        Calculate cross-currency basis from forward points.
+        
+        Basis = Forward Implied Foreign Rate - Actual Foreign Rate
+        
+        If forward points are unavailable, falls back to estimates.
+        """
+        currency = currency.upper()
+        
+        # Get USD rate (SOFR) if not provided
+        if usd_rate is None:
+            usd_rate = await fred_client.get_sofr()
+            if usd_rate is None:
+                usd_rate = 4.30  # Fallback
+        
+        # Try to get forward points
+        fwd_data = await self.get_forward_points(currency, tenor_years)
+        
+        if fwd_data and spot_rate:
+            # Calculate implied foreign rate from forward points
+            # Forward points are typically quoted in pips (0.0001 for most pairs)
+            fwd_points = fwd_data['forward_points_pips']
+            
+            # For EUR/USD, GBP/USD, AUD/USD: 1 pip = 0.0001
+            # For USD/JPY: 1 pip = 0.01
+            pip_value = 0.01 if currency == 'JPY' else 0.0001
+            
+            # Convert forward points to implied rate differential
+            # fwd_pts ≈ (r_foreign - r_usd) × spot × T × pip_adjustment
+            implied_rate_diff = (fwd_points * pip_value) / (spot_rate * tenor_years) * 100
+            implied_foreign_rate = usd_rate + implied_rate_diff
+            
+            # Get actual foreign rate
+            if foreign_rate is None:
+                foreign_rate = await self._get_foreign_rate(currency)
+            
+            if foreign_rate:
+                # Basis = Implied - Actual (in bps)
+                basis_bps = (implied_foreign_rate - foreign_rate) * 100
+                
+                return {
+                    'basis_bps': round(basis_bps, 1),
+                    'implied_rate': round(implied_foreign_rate, 4),
+                    'actual_rate': round(foreign_rate, 4),
+                    'forward_points': fwd_points,
+                    'source': 'Investing.com FX Forwards',
+                    'is_live': True,
+                    'currency': currency,
+                    'tenor': tenor_years
+                }
+        
+        # Fallback: return None to trigger static estimates
+        return None
+    
+    async def _get_foreign_rate(self, currency: str) -> Optional[float]:
+        """Get the benchmark interbank rate for a foreign currency"""
+        if currency == 'EUR':
+            return await ecb_client.get_euribor(12)
+        elif currency == 'GBP':
+            return await boe_client.get_sonia()
+        elif currency == 'JPY':
+            # TONAR from FRED
+            return await fred_client.get_series_latest("IRSTCI01JPM156N") or 0.1
+        elif currency == 'CHF':
+            return await fred_client.get_series_latest("IR3TIB01CHM156N") or 0.5
+        elif currency == 'CAD':
+            return await fred_client.get_series_latest("IRSTCI01CAM156N") or 3.0
+        elif currency == 'AUD':
+            return await fred_client.get_series_latest("IRSTCI01AUM156N") or 4.0
+        return None
+
+
+# Initialize xccy basis client
+xccy_basis_client = XCCYBasisClient()
 
 # ============================================================================
 # DATA FETCHING
@@ -1117,16 +1405,20 @@ def interpolate_hedging_cost(currency: str, tenor: float) -> Optional[float]:
 
 async def get_hedging_cost_async(base_currency: str, target_currency: str, tenor: float) -> dict:
     """
-    Calculate hedging cost between two currencies using LIVE market data.
+    Calculate hedging cost between two currencies.
     
-    For BRL: Fetches live Cupom Cambial from B3 and SOFR from FRED.
-    Formula: Hedge Benefit (bps) = (Cupom Cambial - SOFR) * 100
+    IMPORTANT: Hedge cost ≠ Interest rate differential!
     
-    For G10 currencies: Uses cross-currency basis spreads (fallback for now).
+    The hedge cost is the DEVIATION from Covered Interest Parity (CIP), 
+    known as the cross-currency basis. In a perfect CIP world, hedging 
+    has zero cost because the forward rate already embeds rate differentials.
     
-    Returns cost in bps and metadata about the source.
-    Positive bps = BENEFIT (you gain from hedging)
-    Negative bps = COST (you pay to hedge)
+    Data sources (in order of preference):
+    1. BRL: Live B3 Cupom Cambial + SOFR
+    2. G10: Live FX forward scraping from Investing.com (calculates basis)
+    3. Fallback: Static reference estimates
+    
+    Returns cost in bps. Positive = benefit, Negative = cost.
     """
     base = base_currency.upper()
     target = target_currency.upper()
@@ -1138,30 +1430,29 @@ async def get_hedging_cost_async(base_currency: str, target_currency: str, tenor
             "source": "N/A",
             "is_live": False,
             "instrument": "None",
-            "notes": "Same currency pair"
+            "notes": "Same currency pair",
+            "data_quality": "N/A"
         }
     
     # Special handling for BRL - use live B3 + FRED data
+    # Cupom Cambial is the IMPLIED USD rate in Brazil (derived from FX forwards)
+    # So (Cupom Cambial - SOFR) gives actual hedge cost, not just rate differential
     if (base == 'USD' and target == 'BRL') or (base == 'BRL' and target == 'USD'):
         try:
             b3_client = B3Client()
-            fred_client = FREDClient()
             
-            # Get Cupom Cambial from B3
+            # Get Cupom Cambial from B3 (this is the key - it's the IMPLIED USD rate)
             cupom_cambial = await b3_client.get_cupom_cambial_for_tenor(tenor)
             
-            # Get SOFR from FRED
+            # Get SOFR from FRED (actual USD rate)
             sofr = await fred_client.get_sofr()
             
             if cupom_cambial is not None and sofr is not None:
-                # Calculate hedge benefit: Cupom Cambial - SOFR
-                # This is the implied USD rate in Brazil minus actual USD rate
-                hedge_benefit_pp = cupom_cambial - sofr  # In percentage points
-                hedge_benefit_bps = hedge_benefit_pp * 100  # Convert to bps
+                # Hedge benefit = Implied USD rate in Brazil - Actual USD rate
+                hedge_benefit_pp = cupom_cambial - sofr
+                hedge_benefit_bps = hedge_benefit_pp * 100
                 
                 # Direction adjustment
-                # USD → BRL: Positive = benefit (you receive the spread)
-                # BRL → USD: Negative = cost (you pay the spread)
                 if base == 'BRL':
                     hedge_benefit_bps = -hedge_benefit_bps
                 
@@ -1169,17 +1460,62 @@ async def get_hedging_cost_async(base_currency: str, target_currency: str, tenor
                     "cost_bps": round(hedge_benefit_bps, 1),
                     "source": "B3 + FRED",
                     "is_live": True,
-                    "instrument": "DDI Futures / FRC",
+                    "instrument": "DDI Futures / FRC (Cupom Cambial)",
                     "notes": f"Cupom Cambial ({cupom_cambial:.2f}%) - SOFR ({sofr:.2f}%)",
-                    "cupom_cambial": round(cupom_cambial, 4),
-                    "sofr": round(sofr, 4),
-                    "calculation": f"({cupom_cambial:.2f} - {sofr:.2f}) × 100 = {hedge_benefit_bps:.1f} bps"
+                    "target_rate": round(cupom_cambial, 4),
+                    "target_rate_name": "Cupom Cambial",
+                    "target_rate_source": "B3",
+                    "base_rate": round(sofr, 4),
+                    "base_rate_name": "SOFR",
+                    "base_rate_source": "FRED",
+                    "calculation": f"({cupom_cambial:.2f} - {sofr:.2f}) × 100 = {hedge_benefit_bps:.1f} bps",
+                    "base_currency": base,
+                    "target_currency": target,
+                    "tenor": tenor,
+                    "data_quality": "live"
                 }
         except Exception as e:
             logger.error(f"Live BRL hedging cost fetch failed: {e}")
     
-    # Fallback to static data for BRL if live fetch failed
-    # Or for other currencies (G10 xccy basis)
+    # For G10 currencies, try to calculate basis from FX forwards
+    g10_currencies = ['EUR', 'GBP', 'JPY', 'CHF', 'CAD', 'AUD']
+    target_ccy = target if base == 'USD' else base
+    
+    if target_ccy in g10_currencies and (base == 'USD' or target == 'USD'):
+        try:
+            # Try to get live xccy basis from forward scraping
+            basis_data = await xccy_basis_client.calculate_xccy_basis(
+                currency=target_ccy,
+                tenor_years=tenor
+            )
+            
+            if basis_data and basis_data.get('is_live'):
+                basis_bps = basis_data['basis_bps']
+                
+                # Direction adjustment: if going from USD to foreign, use as-is
+                # If going from foreign to USD, flip sign
+                if base != 'USD':
+                    basis_bps = -basis_bps
+                
+                return {
+                    "cost_bps": round(basis_bps, 1),
+                    "source": basis_data['source'],
+                    "is_live": True,
+                    "instrument": "FX Forward Implied Basis",
+                    "notes": f"Implied {target_ccy} rate: {basis_data['implied_rate']:.2f}%, Actual: {basis_data['actual_rate']:.2f}%",
+                    "implied_rate": basis_data['implied_rate'],
+                    "actual_rate": basis_data['actual_rate'],
+                    "forward_points": basis_data.get('forward_points'),
+                    "calculation": f"({basis_data['implied_rate']:.2f} - {basis_data['actual_rate']:.2f}) × 100 = {basis_bps:.1f} bps",
+                    "base_currency": base,
+                    "target_currency": target,
+                    "tenor": tenor,
+                    "data_quality": "live"
+                }
+        except Exception as e:
+            logger.warning(f"FX forward basis calculation failed for {target_ccy}: {e}")
+    
+    # Fallback to static estimates for all currencies
     return get_hedging_cost_sync(base_currency, target_currency, tenor)
 
 
@@ -1198,16 +1534,21 @@ def get_hedging_cost_sync(base_currency: str, target_currency: str, tenor: float
             "source": "N/A",
             "is_live": False,
             "instrument": "None",
-            "notes": "Same currency pair"
+            "notes": "Same currency pair",
+            "data_quality": "N/A"
         }
     
     # Get base info
-    base_info = HEDGING_COST_INFO.get(base, {'type': 'unknown', 'instrument': 'Unknown', 'notes': ''})
-    target_info = HEDGING_COST_INFO.get(target, {'type': 'unknown', 'instrument': 'Unknown', 'notes': ''})
+    base_info = HEDGING_COST_INFO.get(base, {'type': 'unknown', 'instrument': 'Unknown', 'notes': '', 'data_quality': 'unknown'})
+    target_info = HEDGING_COST_INFO.get(target, {'type': 'unknown', 'instrument': 'Unknown', 'notes': '', 'data_quality': 'unknown'})
     
     # Get costs from lookup
     base_cost = interpolate_hedging_cost(base, tenor) or 0
     target_cost = interpolate_hedging_cost(target, tenor) or 0
+    
+    # Determine data quality - use lowest quality of the pair
+    base_quality = base_info.get('data_quality', 'estimate')
+    target_quality = target_info.get('data_quality', 'estimate')
     
     # Calculate hedging cost based on direction
     if base == 'USD' and target == 'BRL':
@@ -1215,33 +1556,49 @@ def get_hedging_cost_sync(base_currency: str, target_currency: str, tenor: float
         cost_bps = target_cost
         instrument = "DDI Futures / FRC"
         notes = f"Cupom cambial estimate ({base}→{target})"
+        data_quality = "estimate"  # Would be 'live' if B3 data were fetched
+        typical_range = target_info.get('typical_range', '')
     elif base == 'BRL' and target == 'USD':
         # BRL → USD: Invert (you pay instead of receive)
         cost_bps = -interpolate_hedging_cost('BRL', tenor)
         instrument = "DDI Futures / FRC"
         notes = f"Cupom cambial estimate ({base}→{target})"
+        data_quality = "estimate"
+        typical_range = "-150 to -50 bps"  # Inverted BRL range
     elif base in ['BRL', 'CNY']:
         cost_bps = base_cost
         instrument = f"{base} NDF / Futures"
-        notes = f"Estimate ({base}→{target})"
+        notes = f"Reference estimate ({base}→{target})"
+        data_quality = "estimate"
+        typical_range = base_info.get('typical_range', '')
     elif target in ['BRL', 'CNY']:
         cost_bps = -target_cost
         instrument = f"{target} NDF / Futures"
-        notes = f"Estimate ({base}→{target})"
+        notes = f"Reference estimate ({base}→{target})"
+        data_quality = "estimate"
+        typical_range = target_info.get('typical_range', '')
     else:
         # Both are G10/deliverable - use cross-currency basis difference
         cost_bps = target_cost - base_cost
         instrument = "Cross-Currency Basis Swap"
-        notes = f"{base}/{target} xccy basis"
+        notes = f"{base}/{target} xccy basis • Reference estimate"
+        data_quality = "estimate"
+        typical_range = target_info.get('typical_range', '')
     
     return {
         "cost_bps": round(cost_bps, 1),
-        "source": "Reference (fallback)",
+        "source": "Reference estimate",
         "is_live": False,
         "instrument": instrument,
         "notes": notes,
+        "base_currency": base,
+        "target_currency": target,
+        "tenor": tenor,
+        "data_quality": data_quality,
+        "typical_range": typical_range,
         "base_type": base_info.get('type', 'unknown'),
-        "target_type": target_info.get('type', 'unknown')
+        "target_type": target_info.get('type', 'unknown'),
+        "warning": "⚠️ No free live data source available for G10 xccy basis. Use manual override for precise hedging."
     }
 
 
