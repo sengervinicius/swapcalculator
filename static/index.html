@@ -2,8 +2,65 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CrossFX Yield | Hedged Return Calculator</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>CrossFX Yield | Hedged Return Calculator - CIP-Based Currency Conversion</title>
+    
+    <!-- SEO Meta Tags -->
+    <meta name="description" content="Calculate CIP-based hedged returns across currencies with live market data. Convert yields between BRL, USD, EUR, GBP, CHF, JPY, and more with real-time risk-free rates.">
+    <meta name="keywords" content="hedged return, currency conversion, CIP, cross-currency, yield calculator, FX hedging, risk-free rates, SELIC, SOFR, EURIBOR, interest rate parity">
+    <meta name="author" content="Vinicius Senger">
+    <meta name="robots" content="index, follow">
+    <link rel="canonical" href="https://crossfx-yield.com/">
+    
+    <!-- Open Graph / Social Media -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://crossfx-yield.com/">
+    <meta property="og:title" content="CrossFX Yield | Hedged Return Calculator">
+    <meta property="og:description" content="Calculate CIP-based hedged returns across currencies with live market data from BCB, FRED, ECB, and BoE.">
+    <meta property="og:image" content="https://crossfx-yield.com/static/icons/icon-512x512.png">
+    <meta property="og:site_name" content="CrossFX Yield">
+    
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="CrossFX Yield | Hedged Return Calculator">
+    <meta name="twitter:description" content="Calculate CIP-based hedged returns across currencies with live market data.">
+    <meta name="twitter:image" content="https://crossfx-yield.com/static/icons/icon-512x512.png">
+    
+    <!-- PWA / Mobile App -->
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#22c55e">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="CrossFX Yield">
+    <link rel="apple-touch-icon" href="/static/icons/icon-192x192.png">
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" sizes="32x32" href="/static/icons/icon-96x96.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/static/icons/icon-72x72.png">
+    
+    <!-- Structured Data / JSON-LD -->
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "CrossFX Yield",
+        "description": "Calculate CIP-based hedged returns across currencies with live market data",
+        "url": "https://crossfx-yield.com",
+        "applicationCategory": "FinanceApplication",
+        "operatingSystem": "Any",
+        "offers": {
+            "@type": "Offer",
+            "price": "0",
+            "priceCurrency": "USD"
+        },
+        "author": {
+            "@type": "Person",
+            "name": "Vinicius Senger"
+        }
+    }
+    </script>
+    
+    <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -444,6 +501,205 @@
             font-family: 'JetBrains Mono', monospace;
         }
         
+        /* Toggle Switch */
+        .toggle-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 0;
+            border-top: 1px solid var(--border);
+            margin-top: 16px;
+        }
+        
+        .toggle-label {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+        
+        .toggle-title {
+            font-size: 0.9rem;
+            color: var(--text-primary);
+            font-weight: 500;
+        }
+        
+        .toggle-subtitle {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+        
+        .toggle-switch {
+            position: relative;
+            width: 48px;
+            height: 26px;
+            flex-shrink: 0;
+        }
+        
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: var(--bg-input);
+            border: 1px solid var(--border);
+            transition: 0.3s;
+            border-radius: 26px;
+        }
+        
+        .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 18px;
+            width: 18px;
+            left: 3px;
+            bottom: 3px;
+            background: var(--text-muted);
+            transition: 0.3s;
+            border-radius: 50%;
+        }
+        
+        .toggle-switch input:checked + .toggle-slider {
+            background: var(--green-subtle);
+            border-color: var(--green);
+        }
+        
+        .toggle-switch input:checked + .toggle-slider:before {
+            background: var(--green);
+            transform: translateX(22px);
+        }
+        
+        /* Hedging Cost Panel */
+        .hedging-cost-panel {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 16px;
+            margin-top: 12px;
+            display: none;
+        }
+        
+        .hedging-cost-panel.show {
+            display: block;
+            animation: slideDown 0.2s ease;
+        }
+        
+        @keyframes slideDown {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .hedging-cost-suggested {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 14px;
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            margin-bottom: 12px;
+        }
+        
+        .hedging-cost-info {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        
+        .hedging-cost-label {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        
+        .hedging-cost-value {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .hedging-cost-rate {
+            font-size: 1.1rem;
+            font-weight: 600;
+            font-family: 'JetBrains Mono', monospace;
+        }
+        
+        .hedging-cost-rate.negative { color: var(--red); }
+        .hedging-cost-rate.positive { color: var(--green); }
+        .hedging-cost-rate.neutral { color: var(--text-primary); }
+        
+        .hedging-cost-source {
+            font-size: 0.7rem;
+            padding: 2px 6px;
+            background: var(--bg-tertiary);
+            border-radius: 4px;
+            color: var(--text-muted);
+        }
+        
+        .hedging-cost-source.live {
+            background: var(--green-subtle);
+            color: var(--green);
+        }
+        
+        .hedging-cost-instrument {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+        
+        .hedging-cost-actions {
+            display: flex;
+            gap: 8px;
+        }
+        
+        .btn-use-suggested {
+            padding: 8px 14px;
+            background: var(--green);
+            color: var(--bg-primary);
+            border: none;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .btn-use-suggested:hover {
+            background: var(--green-light);
+        }
+        
+        .btn-use-suggested.active {
+            background: var(--green);
+            box-shadow: 0 0 0 2px var(--green-glow);
+        }
+        
+        .hedging-cost-manual {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding-top: 12px;
+            border-top: 1px solid var(--border);
+        }
+        
+        .hedging-cost-manual label {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            white-space: nowrap;
+        }
+        
+        .hedging-cost-manual .form-input {
+            padding: 10px 12px;
+            font-size: 0.9rem;
+            max-width: 120px;
+        }
+        
+        .hedging-cost-manual .input-unit {
+            font-size: 0.75rem;
+        }
+        
         /* Calculate Button */
         .btn-calculate {
             width: 100%;
@@ -608,6 +864,34 @@
         
         .rate-positive { color: var(--green) !important; }
         .rate-negative { color: var(--red) !important; }
+        
+        /* Hedging cost badge in results table */
+        .hedging-cost-badge {
+            display: inline-block;
+            font-size: 0.65rem;
+            padding: 2px 5px;
+            margin-left: 6px;
+            border-radius: 4px;
+            vertical-align: middle;
+        }
+        
+        .hedging-cost-badge.negative {
+            background: rgba(239, 68, 68, 0.15);
+            color: var(--red);
+        }
+        
+        .hedging-cost-badge.positive {
+            background: var(--green-subtle);
+            color: var(--green);
+        }
+        
+        /* Hedging cost assumption highlight */
+        .assumption-row.hedging-cost-assumption {
+            background: rgba(239, 68, 68, 0.05);
+            margin: -8px -12px;
+            padding: 8px 12px;
+            border-radius: 6px;
+        }
         
         /* Chart Section */
         .chart-section {
@@ -1037,6 +1321,42 @@
                         </div>
                     </div>
                     
+                    <!-- Hedging Cost Toggle -->
+                    <div class="toggle-row">
+                        <div class="toggle-label">
+                            <span class="toggle-title">Include Hedging Cost</span>
+                            <span class="toggle-subtitle">Cross-currency basis / NDF cost</span>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="includeHedgingCost">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                    
+                    <!-- Hedging Cost Panel -->
+                    <div class="hedging-cost-panel" id="hedgingCostPanel">
+                        <div class="hedging-cost-suggested" id="hedgingCostSuggested">
+                            <div class="hedging-cost-info">
+                                <span class="hedging-cost-label">Suggested Cost</span>
+                                <div class="hedging-cost-value">
+                                    <span class="hedging-cost-rate neutral" id="hedgingCostRate">— bps</span>
+                                    <span class="hedging-cost-source" id="hedgingCostSource">Reference</span>
+                                </div>
+                                <span class="hedging-cost-instrument" id="hedgingCostInstrument">Select currencies first</span>
+                            </div>
+                            <div class="hedging-cost-actions">
+                                <button type="button" class="btn-use-suggested active" id="useSuggestedBtn">Use Suggested</button>
+                            </div>
+                        </div>
+                        <div class="hedging-cost-manual">
+                            <label>Or enter manually:</label>
+                            <div class="input-with-unit">
+                                <input type="number" class="form-input" id="manualHedgingCost" step="0.1" placeholder="0">
+                                <span class="input-unit">bps</span>
+                            </div>
+                        </div>
+                    </div>
+                    
                     <button type="button" class="btn-calculate" id="calculateBtn">
                         Calculate Hedged Returns
                     </button>
@@ -1150,6 +1470,8 @@
         let targetCounter = 1;
         let additionalCurves = []; // Extra curves added to chart (not for calculation)
         let calculatedResults = []; // Store results for chart
+        let suggestedHedgingCost = null; // Store suggested hedging cost
+        let useSuggestedCost = true; // Track which cost to use
         
         // Color palette for curves (different shades of green/teal)
         const curveColors = [
@@ -1163,6 +1485,97 @@
             '#a3e635', // light lime
             '#4ade80', // light green
         ];
+        
+        // Hedging cost toggle handler
+        document.getElementById('includeHedgingCost').addEventListener('change', function() {
+            const panel = document.getElementById('hedgingCostPanel');
+            if (this.checked) {
+                panel.classList.add('show');
+                updateHedgingCostSuggestion();
+            } else {
+                panel.classList.remove('show');
+            }
+        });
+        
+        // Fetch hedging cost suggestion
+        async function updateHedgingCostSuggestion() {
+            const baseCurrency = document.getElementById('baseCurrency').value;
+            const targetRows = document.querySelectorAll('.target-currency');
+            const firstTarget = targetRows.length > 0 ? targetRows[0].value : '';
+            const tenor = parseFloat(document.getElementById('tenor').value) || 5;
+            
+            if (!baseCurrency || !firstTarget) {
+                document.getElementById('hedgingCostRate').textContent = '— bps';
+                document.getElementById('hedgingCostInstrument').textContent = 'Select currencies first';
+                return;
+            }
+            
+            try {
+                const res = await fetch(`${API_BASE}/hedging-cost/${baseCurrency}/${firstTarget}?tenor=${tenor}`);
+                const data = await res.json();
+                
+                suggestedHedgingCost = data.cost_bps;
+                
+                const rateEl = document.getElementById('hedgingCostRate');
+                const sourceEl = document.getElementById('hedgingCostSource');
+                const instrumentEl = document.getElementById('hedgingCostInstrument');
+                
+                // Format rate with sign
+                if (data.cost_bps < 0) {
+                    rateEl.textContent = `${data.cost_bps.toFixed(1)} bps`;
+                    rateEl.className = 'hedging-cost-rate negative';
+                } else if (data.cost_bps > 0) {
+                    rateEl.textContent = `+${data.cost_bps.toFixed(1)} bps`;
+                    rateEl.className = 'hedging-cost-rate positive';
+                } else {
+                    rateEl.textContent = '0 bps';
+                    rateEl.className = 'hedging-cost-rate neutral';
+                }
+                
+                // Source badge
+                sourceEl.textContent = data.is_live ? '★ Live' : 'Reference';
+                sourceEl.className = 'hedging-cost-source' + (data.is_live ? ' live' : '');
+                
+                // Instrument info
+                instrumentEl.textContent = `${data.instrument} (${data.notes})`;
+                
+            } catch (e) {
+                console.error('Failed to fetch hedging cost:', e);
+                document.getElementById('hedgingCostRate').textContent = '— bps';
+                document.getElementById('hedgingCostInstrument').textContent = 'Unable to fetch';
+            }
+        }
+        
+        // Use suggested button
+        document.getElementById('useSuggestedBtn').addEventListener('click', function() {
+            useSuggestedCost = true;
+            this.classList.add('active');
+            document.getElementById('manualHedgingCost').value = '';
+        });
+        
+        // Manual input handler
+        document.getElementById('manualHedgingCost').addEventListener('input', function() {
+            if (this.value !== '') {
+                useSuggestedCost = false;
+                document.getElementById('useSuggestedBtn').classList.remove('active');
+            } else {
+                useSuggestedCost = true;
+                document.getElementById('useSuggestedBtn').classList.add('active');
+            }
+        });
+        
+        // Update hedging cost when currencies or tenor change
+        document.getElementById('baseCurrency').addEventListener('change', function() {
+            if (document.getElementById('includeHedgingCost').checked) {
+                updateHedgingCostSuggestion();
+            }
+        });
+        
+        document.getElementById('tenor').addEventListener('change', function() {
+            if (document.getElementById('includeHedgingCost').checked) {
+                updateHedgingCostSuggestion();
+            }
+        });
         
         // Check live status
         async function checkStatus() {
@@ -1217,6 +1630,15 @@
         }
         
         document.getElementById('baseCurrency').addEventListener('change', loadIndexers);
+        
+        // Observer for target currency changes (for hedging cost update)
+        document.getElementById('targetsContainer').addEventListener('change', function(e) {
+            if (e.target.classList.contains('target-currency')) {
+                if (document.getElementById('includeHedgingCost').checked) {
+                    updateHedgingCostSuggestion();
+                }
+            }
+        });
         
         // Add target currency
         document.getElementById('addTargetBtn').addEventListener('click', () => {
@@ -1466,6 +1888,16 @@
             const tenor = parseFloat(document.getElementById('tenor').value);
             const spread = parseFloat(document.getElementById('spread').value);
             
+            // Hedging cost parameters
+            const includeHedgingCost = document.getElementById('includeHedgingCost').checked;
+            const manualCostValue = document.getElementById('manualHedgingCost').value;
+            let hedgingCostBps = null;
+            
+            if (includeHedgingCost && !useSuggestedCost && manualCostValue !== '') {
+                hedgingCostBps = parseFloat(manualCostValue);
+            }
+            // If using suggested, leave null and backend will calculate
+            
             // Get all target currencies
             const targetSelects = document.querySelectorAll('.target-currency');
             const targetCurrencies = [];
@@ -1496,16 +1928,24 @@
                 
                 // Calculate for each target
                 for (const targetCurrency of targetCurrencies) {
+                    const requestBody = {
+                        base_currency: baseCurrency,
+                        base_indexer_key: baseIndexer,
+                        target_currency: targetCurrency,
+                        tenor: tenor,
+                        spread: spread,
+                        include_hedging_cost: includeHedgingCost
+                    };
+                    
+                    // Add manual hedging cost if specified
+                    if (hedgingCostBps !== null) {
+                        requestBody.hedging_cost_bps = hedgingCostBps;
+                    }
+                    
                     const res = await fetch(`${API_BASE}/calculate/hedged-return`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            base_currency: baseCurrency,
-                            base_indexer_key: baseIndexer,
-                            target_currency: targetCurrency,
-                            tenor: tenor,
-                            spread: spread
-                        })
+                        body: JSON.stringify(requestBody)
                     });
                     
                     if (!res.ok) {
@@ -1531,11 +1971,16 @@
                 
                 calculatedResults.forEach(result => {
                     const rfDelta = result.risk_free_target - result.risk_free_base;
+                    const hasHedgingCost = result.hedging_cost_bps !== null && result.hedging_cost_bps !== undefined;
+                    
                     const row = document.createElement('tr');
                     row.innerHTML = `
                         <td class="currency-cell">${result.target_currency}</td>
                         <td class="rate-cell ${rfDelta >= 0 ? 'rate-negative' : 'rate-positive'}">${rfDelta >= 0 ? '+' : ''}${rfDelta.toFixed(2)}%</td>
-                        <td class="hedged-cell">${result.usd_equiv_pp.toFixed(2)}%</td>
+                        <td class="hedged-cell">
+                            ${result.hedged_return_pp.toFixed(2)}%
+                            ${hasHedgingCost ? `<span class="hedging-cost-badge ${result.hedging_cost_bps >= 0 ? 'positive' : 'negative'}">${result.hedging_cost_bps >= 0 ? '+' : ''}${result.hedging_cost_bps.toFixed(0)}bps</span>` : ''}
+                        </td>
                         <td class="total-cell">${result.total_return_target_pp.toFixed(2)}%</td>
                     `;
                     tbody.appendChild(row);
@@ -1547,8 +1992,9 @@
                 
                 firstResult.assumptions.forEach(a => {
                     const isLive = a.source_name === 'Live';
+                    const isHedgingCost = a.name.includes('Hedging Cost');
                     const row = document.createElement('div');
-                    row.className = 'assumption-row';
+                    row.className = 'assumption-row' + (isHedgingCost ? ' hedging-cost-assumption' : '');
                     row.innerHTML = `
                         <span class="assumption-name">
                             ${a.name.replace(' [Live]', '')}
@@ -1596,6 +2042,34 @@
                 }
             });
         });
+        
+        // Register Service Worker for PWA
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/static/sw.js')
+                    .then(registration => {
+                        console.log('✅ Service Worker registered:', registration.scope);
+                    })
+                    .catch(error => {
+                        console.log('❌ Service Worker registration failed:', error);
+                    });
+            });
+        }
+        
+        // iOS Install Prompt (for Safari)
+        function isIOS() {
+            return /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+        }
+        
+        function isInStandaloneMode() {
+            return ('standalone' in window.navigator) && window.navigator.standalone;
+        }
+        
+        // Show iOS install prompt if needed
+        if (isIOS() && !isInStandaloneMode()) {
+            // Could show a custom banner here prompting "Add to Home Screen"
+            console.log('ℹ️ iOS detected - app can be installed via Share > Add to Home Screen');
+        }
         
         // Init
         checkStatus();
