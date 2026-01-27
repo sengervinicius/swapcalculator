@@ -1667,7 +1667,7 @@ async def get_hedging_cost_endpoint(base_currency: str, target_currency: str, te
     """
     base = base_currency.upper()
     target = target_currency.upper()
-    supported = ['BRL', 'USD', 'EUR', 'GBP', 'CHF', 'JPY', 'CNY', 'CAD', 'AUD']
+    supported = ['BRL', 'USD', 'EUR', 'GBP', 'CHF', 'JPY', 'CNY', 'CAD', 'AUD', 'ARS']
     
     if base not in supported:
         raise HTTPException(status_code=404, detail=f"Base currency {base} not supported")
@@ -1686,7 +1686,7 @@ async def get_hedging_cost_endpoint(base_currency: str, target_currency: str, te
 @app.get("/api/hedging-cost/all", tags=["Reference Data"])
 async def get_all_hedging_costs(tenor: float = 5):
     """Get hedging cost matrix for all supported currency pairs"""
-    supported = ['BRL', 'USD', 'EUR', 'GBP', 'CHF', 'JPY', 'CNY', 'CAD', 'AUD']
+    supported = ['BRL', 'USD', 'EUR', 'GBP', 'CHF', 'JPY', 'CNY', 'CAD', 'AUD', 'ARS']
     matrix = {}
     
     for base in supported:
@@ -1710,14 +1710,14 @@ async def get_all_hedging_costs(tenor: float = 5):
 @app.get("/api/indexers", tags=["Reference Data"])
 async def list_all_indexers():
     result = {}
-    for ccy in ['BRL', 'USD', 'EUR', 'GBP', 'CHF', 'JPY', 'CNY', 'CAD', 'AUD']:
+    for ccy in ['BRL', 'USD', 'EUR', 'GBP', 'CHF', 'JPY', 'CNY', 'CAD', 'AUD', 'ARS']:
         result[ccy] = await get_live_indexers(ccy)
     return result
 
 @app.get("/api/indexers/{currency}", tags=["Reference Data"])
 async def get_indexers_by_currency(currency: str):
     currency = currency.upper()
-    supported = ['BRL', 'USD', 'EUR', 'GBP', 'CHF', 'JPY', 'CNY', 'CAD', 'AUD']
+    supported = ['BRL', 'USD', 'EUR', 'GBP', 'CHF', 'JPY', 'CNY', 'CAD', 'AUD', 'ARS']
     if currency not in supported:
         raise HTTPException(status_code=404, detail=f"Currency {currency} not found")
     
@@ -1811,7 +1811,7 @@ async def get_risk_free_curve(currency: str):
 async def get_yield_curve_for_chart(currency: str):
     """Get full yield curve data for charting (tenors 1-30 years)"""
     currency = currency.upper()
-    supported = ['BRL', 'USD', 'EUR', 'GBP', 'CHF', 'JPY', 'CNY', 'CAD', 'AUD']
+    supported = ['BRL', 'USD', 'EUR', 'GBP', 'CHF', 'JPY', 'CNY', 'CAD', 'AUD', 'ARS']
     if currency not in supported:
         raise HTTPException(status_code=404, detail=f"Currency {currency} not supported")
     
