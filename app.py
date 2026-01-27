@@ -983,8 +983,18 @@ async def get_live_indexers(currency: str) -> List[dict]:
                 indexers.append(FALLBACK_INDEXERS['AUD'][1])
             indexers.append(FALLBACK_INDEXERS['AUD'][2])
         
+        elif currency == 'ARS':
+            # Argentina rates - using fallback (no easy live API due to capital controls)
+            # BADLAR and BCRA policy rate
+            indexers.append(FALLBACK_INDEXERS['ARS'][1])
+            indexers.append(FALLBACK_INDEXERS['ARS'][2])
+        
         else:
-            return FALLBACK_INDEXERS.get(currency, [])
+            # Unknown currency - try fallback
+            fallback = FALLBACK_INDEXERS.get(currency, [])
+            if fallback:
+                return fallback
+            return indexers
     
     except Exception as e:
         logger.error(f"Error getting indexers for {currency}: {e}")
