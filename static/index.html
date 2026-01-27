@@ -1831,6 +1831,7 @@
                                 <option value="GBP">GBP — British Pound</option>
                                 <option value="CHF">CHF — Swiss Franc</option>
                                 <option value="JPY">JPY — Japanese Yen</option>
+                                <option value="ARS">ARS — Argentine Peso</option>
                                 <option value="CNY">CNY — Chinese Yuan</option>
                                 <option value="CAD">CAD — Canadian Dollar</option>
                                 <option value="AUD">AUD — Australian Dollar</option>
@@ -1880,6 +1881,7 @@
                                             <option value="GBP">GBP — British Pound</option>
                                             <option value="CHF">CHF — Swiss Franc</option>
                                             <option value="JPY">JPY — Japanese Yen</option>
+                                            <option value="ARS">ARS — Argentine Peso</option>
                                             <option value="CNY">CNY — Chinese Yuan</option>
                                             <option value="CAD">CAD — Canadian Dollar</option>
                                             <option value="AUD">AUD — Australian Dollar</option>
@@ -2125,6 +2127,9 @@
             }
         });
         
+        // Store current hedging cost data for methodology display
+        let currentHedgingCostData = null;
+        
         // Fetch hedging cost suggestion
         async function updateHedgingCostSuggestion() {
             const baseCurrency = document.getElementById('baseCurrency').value;
@@ -2135,6 +2140,8 @@
             if (!baseCurrency || !firstTarget) {
                 document.getElementById('hedgingCostRate').textContent = '— bps';
                 document.getElementById('hedgingCostInstrument').textContent = 'Select currencies first';
+                currentHedgingCostData = null;
+                updateMethodologyModal(null);
                 return;
             }
             
@@ -2143,6 +2150,7 @@
                 const data = await res.json();
                 
                 suggestedHedgingCost = data.cost_bps;
+                currentHedgingCostData = data; // Store full data
                 
                 const rateEl = document.getElementById('hedgingCostRate');
                 const sourceEl = document.getElementById('hedgingCostSource');
@@ -2167,10 +2175,236 @@
                 // Instrument info
                 instrumentEl.textContent = `${data.instrument}`;
                 
+                // Update methodology modal with real data
+                updateMethodologyModal(data);
+                
             } catch (e) {
                 console.error('Failed to fetch hedging cost:', e);
                 document.getElementById('hedgingCostRate').textContent = '— bps';
                 document.getElementById('hedgingCostInstrument').textContent = 'Unable to fetch';
+                currentHedgingCostData = null;
+                updateMethodologyModal(null);
+            }
+        }
+        
+        // Update methodology modal with actual data
+        function updateMethodologyModal(data) {
+            const calcEl = document.getElementById('methodologyCalcValues');
+            const dataSourcesEl = document.getElementById('methodologyDataSources');
+            const currencyPairEl = document.getElementById('methodologyCurrencyPair');
+            
+            if (!data) {
+                if (calcEl) calcEl.innerHTML = '<span style="color: var(--text-muted);">Select currencies to see calculation</span>';
+                return;
+            }
+            
+            // Update currency pair
+            if (currencyPairEl) {
+                currencyPairEl.textContent = `${data.base_currency || 'USD'} → ${data.target_currency || 'BRL'}`;
+            }
+            
+            // Check what kind of live data we have
+            const hasBRLLiveData = data.is_live && (data.cupom_cambial !== undefined || 
+                (data.target_rate_name && data.target_rate_name.includes('Cupom')));
+            const hasFXForwardData = data.is_live && data.implied_rate !== undefined && data.actual_rate !== undefined;
+            const hasGenericLiveData = data.is_live && data.target_rate !== undefined && data.base_rate !== undefined;
+            
+            if (hasFXForwardData) {
+                // FX Forward implied basis calculation (for G10 currencies)
+                const benefit = data.cost_bps;
+                const benefitSign = benefit >= 0 ? '+' : '';
+                const benefitColor = benefit >= 0 ? 'var(--green)' : 'var(--red)';
+                const targetCcy = data.target_currency !== 'USD' ? data.target_currency : data.base_currency;
+                
+                if (calcEl) {
+                    calcEl.innerHTML = `
+                        <div style="margin-bottom: 4px; display: flex; align-items: center; gap: 8px;">
+                            <span style="background: var(--green-subtle); color: var(--green); padding: 2px 8px; border-radius: 4px; font-size: 0.7rem; font-weight: 600;">✓ LIVE DATA</span>
+                        </div>
+                        <div style="margin: 12px 0; padding: 10px; background: rgba(6, 182, 212, 0.1); border-radius: 6px; border-left: 3px solid var(--cyan);">
+                            <div style="font-size: 0.8rem; color: var(--cyan); margin-bottom: 4px; font-weight: 500;">
+                                FX Forward Implied Basis
+                            </div>
+                            <div style="font-size: 0.75rem; color: var(--text-muted);">
+                                Calculated from FX forward points vs. actual interbank rates
+                            </div>
+                        </div>
+                        <div style="margin-bottom: 8px; margin-top: 12px;">
+                            <span style="color: var(--text-muted);">Forward-Implied ${targetCcy} Rate:</span> 
+                            <span style="color: var(--cyan); font-weight: 600;">${data.implied_rate.toFixed(2)}%</span> p.a.
+                        </div>
+                        <div style="margin-bottom: 8px;">
+                            <span style="color: var(--text-muted);">Actual ${targetCcy} Interbank Rate:</span> 
+                            <span style="color: var(--cyan); font-weight: 600;">${data.actual_rate.toFixed(2)}%</span> p.a.
+                        </div>
+                        ${data.forward_points ? `
+                        <div style="margin-bottom: 8px;">
+                            <span style="color: var(--text-muted);">Forward Points:</span> 
+                            <span style="color: var(--text-secondary);">${data.forward_points.toFixed(1)} pips</span>
+                        </div>
+                        ` : ''}
+                        <div style="border-top: 1px dashed var(--border); padding-top: 8px; margin-top: 8px;">
+                            <span style="color: var(--text-muted);">Xccy Basis:</span> 
+                            (${data.implied_rate.toFixed(2)} − ${data.actual_rate.toFixed(2)}) × 100 = 
+                            <span style="color: ${benefitColor}; font-weight: 700;">${benefitSign}${benefit.toFixed(1)} bps</span>
+                        </div>
+                    `;
+                }
+                
+                if (dataSourcesEl) {
+                    dataSourcesEl.innerHTML = `
+                        <div class="methodology-data-source">
+                            <div class="methodology-data-source-name">FX Forward Points</div>
+                            <div class="methodology-data-source-value">
+                                Investing.com <span style="color: var(--cyan);">${data.forward_points ? data.forward_points.toFixed(1) + ' pips' : 'N/A'}</span>
+                                <span class="methodology-data-source-badge">LIVE</span>
+                            </div>
+                        </div>
+                        <div class="methodology-data-source">
+                            <div class="methodology-data-source-name">${targetCcy} Interbank Rate</div>
+                            <div class="methodology-data-source-value">
+                                ECB/BoE/FRED <span style="color: var(--cyan);">${data.actual_rate.toFixed(2)}%</span>
+                                <span class="methodology-data-source-badge">LIVE</span>
+                            </div>
+                        </div>
+                    `;
+                }
+            } else if (hasBRLLiveData || hasGenericLiveData) {
+                // BRL-style calculation (Cupom Cambial) or generic rate differential
+                const benefit = data.cost_bps;
+                const benefitSign = benefit >= 0 ? '+' : '';
+                const benefitColor = benefit >= 0 ? 'var(--green)' : 'var(--red)';
+                
+                // Handle both new format (target_rate/base_rate) and old BRL format (cupom_cambial/sofr)
+                const targetRate = data.target_rate ?? data.cupom_cambial;
+                const baseRate = data.base_rate ?? data.sofr;
+                const targetRateName = data.target_rate_name ?? 'Cupom Cambial';
+                const baseRateName = data.base_rate_name ?? 'SOFR';
+                const targetSource = data.target_rate_source ?? 'B3';
+                const baseSource = data.base_rate_source ?? 'FRED';
+                
+                if (calcEl) {
+                    calcEl.innerHTML = `
+                        <div style="margin-bottom: 4px; display: flex; align-items: center; gap: 8px;">
+                            <span style="background: var(--green-subtle); color: var(--green); padding: 2px 8px; border-radius: 4px; font-size: 0.7rem; font-weight: 600;">✓ LIVE DATA</span>
+                        </div>
+                        ${targetRateName.includes('Cupom') ? `
+                        <div style="margin: 12px 0; padding: 10px; background: rgba(6, 182, 212, 0.1); border-radius: 6px; border-left: 3px solid var(--cyan);">
+                            <div style="font-size: 0.8rem; color: var(--cyan); margin-bottom: 4px; font-weight: 500;">
+                                Cupom Cambial Method
+                            </div>
+                            <div style="font-size: 0.75rem; color: var(--text-muted);">
+                                Cupom Cambial is the implied USD rate in Brazil (from FX futures)
+                            </div>
+                        </div>
+                        ` : ''}
+                        <div style="margin-bottom: 8px; margin-top: 12px;">
+                            <span style="color: var(--text-muted);">${targetRateName} (${data.target_currency}):</span> 
+                            <span style="color: var(--cyan); font-weight: 600;">${targetRate.toFixed(2)}%</span> p.a.
+                        </div>
+                        <div style="margin-bottom: 8px;">
+                            <span style="color: var(--text-muted);">${baseRateName} (${data.base_currency}):</span> 
+                            <span style="color: var(--cyan); font-weight: 600;">${baseRate.toFixed(2)}%</span> p.a.
+                        </div>
+                        <div style="border-top: 1px dashed var(--border); padding-top: 8px; margin-top: 8px;">
+                            <span style="color: var(--text-muted);">Hedge Cost:</span> 
+                            (${targetRate.toFixed(2)} − ${baseRate.toFixed(2)}) × 100 = 
+                            <span style="color: ${benefitColor}; font-weight: 700;">${benefitSign}${benefit.toFixed(1)} bps</span>
+                        </div>
+                    `;
+                }
+                
+                // Update data sources to show actual values
+                if (dataSourcesEl) {
+                    dataSourcesEl.innerHTML = `
+                        <div class="methodology-data-source">
+                            <div class="methodology-data-source-name">${targetRateName}</div>
+                            <div class="methodology-data-source-value">
+                                ${targetSource} <span style="color: var(--cyan);">${targetRate.toFixed(2)}%</span>
+                                <span class="methodology-data-source-badge">LIVE</span>
+                            </div>
+                        </div>
+                        <div class="methodology-data-source">
+                            <div class="methodology-data-source-name">${baseRateName}</div>
+                            <div class="methodology-data-source-value">
+                                ${baseSource} <span style="color: var(--cyan);">${baseRate.toFixed(2)}%</span>
+                                <span class="methodology-data-source-badge">LIVE</span>
+                            </div>
+                        </div>
+                    `;
+                }
+            } else {
+                // Fallback/reference estimate data
+                const benefit = data.cost_bps;
+                const benefitSign = benefit >= 0 ? '+' : '';
+                const benefitColor = benefit >= 0 ? 'var(--green)' : 'var(--red)';
+                const typicalRange = data.typical_range || '';
+                const instrument = data.instrument || 'Cross-Currency Basis Swap';
+                
+                if (calcEl) {
+                    calcEl.innerHTML = `
+                        <div style="margin-bottom: 4px; display: flex; align-items: center; gap: 8px;">
+                            <span style="background: rgba(234, 179, 8, 0.2); color: var(--yellow); padding: 2px 8px; border-radius: 4px; font-size: 0.7rem; font-weight: 600;">⚠️ ESTIMATE</span>
+                        </div>
+                        <div style="margin: 12px 0; padding: 10px; background: rgba(234, 179, 8, 0.1); border-radius: 6px; border-left: 3px solid var(--yellow);">
+                            <div style="font-size: 0.8rem; color: var(--yellow); margin-bottom: 4px; font-weight: 500;">
+                                Reference Estimate
+                            </div>
+                            <div style="font-size: 0.75rem; color: var(--text-muted);">
+                                Live FX forward data unavailable. Using historical xccy basis averages.
+                            </div>
+                        </div>
+                        <div style="margin-bottom: 8px; margin-top: 12px;">
+                            <span style="color: var(--text-muted);">Currency Pair:</span> 
+                            ${data.base_currency || '—'} → ${data.target_currency || '—'}
+                        </div>
+                        <div style="margin-bottom: 8px;">
+                            <span style="color: var(--text-muted);">Tenor:</span> 
+                            ${data.tenor || 5}Y
+                        </div>
+                        <div style="margin-bottom: 8px;">
+                            <span style="color: var(--text-muted);">Instrument:</span> 
+                            ${instrument}
+                        </div>
+                        ${typicalRange ? `
+                        <div style="margin-bottom: 8px;">
+                            <span style="color: var(--text-muted);">Typical Range:</span> 
+                            <span style="color: var(--text-secondary);">${typicalRange}</span>
+                        </div>
+                        ` : ''}
+                        <div style="border-top: 1px dashed var(--border); padding-top: 8px; margin-top: 8px;">
+                            <span style="color: var(--text-muted);">Estimated Xccy Basis:</span> 
+                            <span style="color: ${benefitColor}; font-weight: 700;">${benefitSign}${benefit.toFixed(1)} bps</span>
+                        </div>
+                        <div style="margin-top: 8px; font-size: 0.75rem; color: var(--text-muted);">
+                            💡 For precise hedging, use manual override with your institution's rates
+                        </div>
+                    `;
+                }
+                
+                if (dataSourcesEl) {
+                    dataSourcesEl.innerHTML = `
+                        <div class="methodology-data-source">
+                            <div class="methodology-data-source-name">Data Source</div>
+                            <div class="methodology-data-source-value">
+                                ${data.source || 'Reference estimate'}
+                                <span class="methodology-data-source-badge" style="background: rgba(234, 179, 8, 0.2); color: var(--yellow);">ESTIMATE</span>
+                            </div>
+                        </div>
+                        <div class="methodology-data-source">
+                            <div class="methodology-data-source-name">Instrument</div>
+                            <div class="methodology-data-source-value">
+                                ${instrument}
+                            </div>
+                        </div>
+                        <div class="methodology-data-source">
+                            <div class="methodology-data-source-name">Notes</div>
+                            <div class="methodology-data-source-value" style="font-size: 0.7rem;">
+                                ${data.notes || 'Based on historical market averages'}
+                            </div>
+                        </div>
+                    `;
+                }
             }
         }
         
@@ -2878,28 +3112,25 @@
                 <span class="methodology-title">
                     <span class="methodology-title-icon">📊</span>
                     Hedge Cost Methodology
+                    <span id="methodologyCurrencyPair" style="font-size: 0.85rem; color: var(--cyan); margin-left: 8px;">—</span>
                 </span>
                 <button type="button" class="methodology-close" id="closeMethodologyBtn">×</button>
             </div>
             
             <div class="methodology-body">
                 <div class="methodology-section">
-                    <div class="methodology-section-title">Core Formula (USD → BRL)</div>
-                    <div class="methodology-text">
-                        The hedge cost/benefit is calculated as the difference between the <strong>implied USD rate</strong> in Brazil and the <strong>actual USD rate</strong>:
-                    </div>
-                    <div class="methodology-formula">
-                        <div class="methodology-formula-main">Hedge Benefit (bps) = (Cupom Cambial − SOFR) × 100</div>
-                        <div class="methodology-formula-vars">
-                            <span>Cupom Cambial</span> = Implied USD rate in Brazil (from B3 futures)<br>
-                            <span>SOFR</span> = Secured Overnight Financing Rate (actual USD rate)
+                    <div class="methodology-section-title">Current Calculation</div>
+                    <div class="methodology-example">
+                        <div class="methodology-example-title">Live Market Data</div>
+                        <div class="methodology-example-calc" id="methodologyCalcValues">
+                            <span style="color: var(--text-muted);">Select currencies to see calculation</span>
                         </div>
                     </div>
                 </div>
                 
                 <div class="methodology-section">
                     <div class="methodology-section-title">Data Sources</div>
-                    <div class="methodology-data-sources">
+                    <div class="methodology-data-sources" id="methodologyDataSources">
                         <div class="methodology-data-source">
                             <div class="methodology-data-source-name">Cupom Cambial</div>
                             <div class="methodology-data-source-value">
@@ -2918,44 +3149,46 @@
                 </div>
                 
                 <div class="methodology-section">
-                    <div class="methodology-section-title">Example Calculation</div>
-                    <div class="methodology-example">
-                        <div class="methodology-example-title">Current Market (Illustrative)</div>
-                        <div class="methodology-example-calc">
-                            Cupom Cambial (5Y): 5.25% p.a.<br>
-                            SOFR: 4.30% p.a.<br>
-                            ────────────────────────<br>
-                            Hedge Benefit: (5.25 − 4.30) × 100 = <strong>+95 bps</strong>
+                    <div class="methodology-section-title">Formula (USD → BRL)</div>
+                    <div class="methodology-text">
+                        The hedge cost/benefit is calculated as the difference between the <strong>implied USD rate</strong> in Brazil and the <strong>actual USD rate</strong>:
+                    </div>
+                    <div class="methodology-formula">
+                        <div class="methodology-formula-main">Hedge Benefit (bps) = (Cupom Cambial − SOFR) × 100</div>
+                        <div class="methodology-formula-vars">
+                            <span>Cupom Cambial</span> = Implied USD rate in Brazil (from B3 DDI futures)<br>
+                            <span>SOFR</span> = Secured Overnight Financing Rate (actual USD rate)
                         </div>
                     </div>
                     <div class="methodology-text">
-                        A <strong>positive</strong> value means you <em>benefit</em> from hedging (the implied USD rate in Brazil exceeds actual USD funding). A <strong>negative</strong> value would mean a hedging <em>cost</em>.
+                        A <strong style="color: var(--green);">positive</strong> value means you <em>benefit</em> from hedging. 
+                        A <strong style="color: var(--red);">negative</strong> value would mean a hedging <em>cost</em>.
                     </div>
                 </div>
                 
                 <div class="methodology-section">
                     <div class="methodology-section-title">Why Cupom Cambial?</div>
                     <div class="methodology-text">
-                        The Cupom Cambial already incorporates the <strong>convertibility premium</strong> — the cost of USD being "trapped" in Brazil's financial system vs. freely tradeable offshore USD. This is why:
+                        The Cupom Cambial already incorporates the <strong>convertibility premium</strong> — the cost of USD being "trapped" in Brazil's financial system vs. freely tradeable offshore USD:
                     </div>
                     <div class="methodology-formula">
                         <div class="methodology-formula-vars">
                             <span>Theoretical max gain</span> = CDI − SOFR ≈ 900 bps<br>
                             <span>Actual hedge gain</span> = Cupom Cambial − SOFR ≈ 50-150 bps<br>
-                            <span>Difference</span> = Convertibility Premium (already priced in)
+                            <span>Difference</span> = Convertibility Premium (already priced in by market)
                         </div>
                     </div>
                 </div>
                 
                 <div class="methodology-section">
-                    <div class="methodology-section-title">Additional Components (Not Included)</div>
+                    <div class="methodology-section-title">Limitations</div>
                     <div class="methodology-warning">
                         <span class="methodology-warning-icon">⚠️</span>
                         <span class="methodology-warning-text">
                             This calculation represents the <strong>expected</strong> hedge cost/benefit based on current market rates. 
-                            It does not include: (1) Transaction costs (bid-offer spreads), (2) Slippage from discrete hedging, 
-                            (3) Model uncertainty. For a complete analysis, consider using the manual override with your institution's 
-                            specific hedging parameters.
+                            It does <strong>not</strong> include: (1) Transaction costs (bid-offer spreads on futures), 
+                            (2) Slippage from discrete hedging, (3) Roll costs for multi-year hedges. 
+                            Use manual override for institution-specific adjustments.
                         </span>
                     </div>
                 </div>
@@ -2964,7 +3197,7 @@
             <div class="methodology-footer">
                 <div class="methodology-ref">
                     Based on CIP (Covered Interest Parity) principles. 
-                    See: <a href="https://ssrn.com/abstract=3924377" target="_blank" rel="noopener">Patry & Mozley (2021) "Future Hedging Costs: Back to Basics"</a>
+                    Reference: <a href="https://ssrn.com/abstract=3924377" target="_blank" rel="noopener">Patry & Mozley (2021) "Future Hedging Costs"</a>
                 </div>
             </div>
         </div>
