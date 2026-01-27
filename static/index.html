@@ -2156,12 +2156,15 @@
                 const sourceEl = document.getElementById('hedgingCostSource');
                 const instrumentEl = document.getElementById('hedgingCostInstrument');
                 
+                // Safety check for cost_bps
+                const costBps = data.cost_bps ?? 0;
+                
                 // Format rate with sign
-                if (data.cost_bps < 0) {
-                    rateEl.textContent = `${data.cost_bps.toFixed(1)} bps`;
+                if (costBps < 0) {
+                    rateEl.textContent = `${costBps.toFixed(1)} bps`;
                     rateEl.className = 'hedging-cost-rate negative';
-                } else if (data.cost_bps > 0) {
-                    rateEl.textContent = `+${data.cost_bps.toFixed(1)} bps`;
+                } else if (costBps > 0) {
+                    rateEl.textContent = `+${costBps.toFixed(1)} bps`;
                     rateEl.className = 'hedging-cost-rate positive';
                 } else {
                     rateEl.textContent = '0 bps';
@@ -2517,8 +2520,9 @@
                 data.indexers.forEach(idx => {
                     const opt = document.createElement('option');
                     opt.value = idx.key;
-                    const isLive = idx.label.includes('[Live]');
-                    opt.textContent = `${idx.label.replace(' [Live]', '')} — ${idx.value.toFixed(2)}%${isLive ? ' ★' : ''}`;
+                    const isLive = idx.label && idx.label.includes('[Live]');
+                    const valueStr = (idx.value !== undefined && idx.value !== null) ? idx.value.toFixed(2) : '0.00';
+                    opt.textContent = `${(idx.label || 'Unknown').replace(' [Live]', '')} — ${valueStr}%${isLive ? ' ★' : ''}`;
                     sel.appendChild(opt);
                 });
             } catch (e) {
