@@ -220,57 +220,54 @@ FALLBACK_RISK_FREE = {
 }
 
 # ============================================================================
-# HEDGING COST / CROSS-CURRENCY BASIS (in bps)
+# HEDGING COST / CROSS-CURRENCY BASIS
 # 
-# For BRL: Hedge Cost = Cupom Cambial - SOFR
-#   - Cupom Cambial: Implied USD rate in Brazil (from B3 futures/forwards)
-#   - SOFR: Actual USD overnight rate
-#   - If Cupom Cambial > SOFR → BENEFIT (you gain from hedging)
-#   - If Cupom Cambial < SOFR → COST (you pay to hedge)
+# IMPORTANT: The hedge cost is NOT the interest rate differential!
+# The interest rate differential is already captured in the CIP conversion formula.
 #
-# The cupom cambial already includes the "convertibility premium" - the cost
-# of USD being trapped in Brazil vs. offshore USD.
+# The hedge cost is the CROSS-CURRENCY BASIS - the small deviation from CIP
+# that exists in real markets due to:
+# - USD funding scarcity
+# - Bank balance sheet constraints
+# - Convertibility premiums (for EM currencies)
+# - Regulatory capital requirements
 #
-# For G10 currencies: Use cross-currency basis swap spreads
-#   - IMPORTANT: No free live data source available
-#   - Values below are REFERENCE ESTIMATES based on typical market ranges
-#   - Actual xccy basis fluctuates with market conditions
-#   - For precise hedging, use Bloomberg or institution's rates
+# TYPICAL RANGES:
+# - G10 currencies: -10 to -50 bps (you PAY a small premium for USD)
+# - BRL: +50 to +150 bps (Cupom Cambial > SOFR = you RECEIVE a small benefit)
+# - ARS: Complex - NDF market has large basis due to capital controls
+#
+# SIGN CONVENTION:
+# - POSITIVE = benefit when hedging (actual forward better than CIP-implied)
+# - NEGATIVE = cost when hedging (actual forward worse than CIP-implied)
 # ============================================================================
 
-# Fallback values - Reference estimates for when live data unavailable
-# G10 basis: Based on typical market ranges (NOT live data)
-# These should be treated as indicative only
-FALLBACK_HEDGING_COST = {
-    # vs USD basis (bps) - G10 cross-currency basis spreads
-    # Source: Historical averages from market literature
-    'USD': {1: 0, 2: 0, 3: 0, 5: 0, 10: 0},
-    # EUR: Typically -15 to -30 bps
-    'EUR': {1: -20, 2: -22, 3: -25, 5: -25, 10: -28},
-    # GBP: Usually tighter than EUR
-    'GBP': {1: -10, 2: -12, 3: -12, 5: -15, 10: -15},
-    # JPY: Typically wider due to structural USD demand
-    'JPY': {1: -40, 2: -45, 3: -48, 5: -50, 10: -55},
-    # CHF: Similar to EUR
-    'CHF': {1: -25, 2: -28, 3: -30, 5: -32, 10: -35},
-    # CAD: Usually tight
-    'CAD': {1: -8, 2: -10, 3: -10, 5: -12, 10: -12},
-    # AUD: Can vary
-    'AUD': {1: -5, 2: -5, 3: 0, 5: 0, 10: 5},
-    # BRL: Fallback only - prefer live B3 cupom cambial data
-    # Positive = benefit going USD→BRL (cupom cambial > SOFR)
-    'BRL': {1: 40, 2: 50, 3: 60, 5: 75, 10: 100},
-    # ARS: Very high cost due to capital controls, devaluation risk
-    # These are rough estimates - actual NDF implied costs can be much higher
-    'ARS': {1: -800, 2: -1000, 3: -1200, 5: -1500, 10: -2000},
-    # CNY: NDF implied, moderate
-    'CNY': {1: -60, 2: -80, 3: -100, 5: -120, 10: -150},
+# Cross-currency basis vs USD (in bps)
+# These represent the DEVIATION from CIP, not the full rate differential
+# Most values should be SMALL (-50 to +50 bps) except for restricted currencies
+XCCY_BASIS_VS_USD = {
+    'USD': {1: 0, 2: 0, 3: 0, 5: 0, 10: 0},  # USD is the base
+    # G10: Small negative basis (USD funding premium)
+    'EUR': {1: -15, 2: -18, 3: -20, 5: -22, 10: -25},
+    'GBP': {1: -8, 2: -10, 3: -12, 5: -12, 10: -15},
+    'JPY': {1: -30, 2: -35, 3: -40, 5: -45, 10: -50},
+    'CHF': {1: -18, 2: -20, 3: -22, 5: -25, 10: -28},
+    'CAD': {1: -5, 2: -6, 3: -8, 5: -10, 10: -10},
+    'AUD': {1: -3, 2: -3, 3: -5, 5: -5, 10: -5},
+    # BRL: Small positive (convertibility premium)
+    # This should be SMALL - the big CDI-SOFR diff is already in CIP
+    'BRL': {1: 15, 2: 20, 3: 25, 5: 35, 10: 45},
+    # ARS: Capital controls create real NDF basis - this can be larger
+    # but still represents deviation from official rate differential
+    'ARS': {1: -150, 2: -200, 3: -250, 5: -300, 10: -400},
+    # CNY: Modest NDF basis for restricted currency
+    'CNY': {1: -10, 2: -15, 3: -18, 5: -22, 10: -30},
 }
 
-# Data quality indicators - note that G10 can be 'live' if FX forward scraping works
+# Data quality indicators
 HEDGING_COST_DATA_QUALITY = {
     'BRL': 'live',      # Live B3 data when available
-    'EUR': 'live_or_estimate',  # Live from FX forwards if network enabled, else estimate
+    'EUR': 'live_or_estimate',
     'GBP': 'live_or_estimate',
     'JPY': 'live_or_estimate',
     'CHF': 'live_or_estimate',
@@ -1390,13 +1387,20 @@ async def get_risk_free_rate(currency: str, tenor: float) -> tuple[Optional[floa
 # HEDGING COST FUNCTIONS
 # ============================================================================
 
-def interpolate_hedging_cost(currency: str, tenor: float) -> Optional[float]:
-    """Interpolate hedging cost (in bps) for a given currency and tenor"""
+def interpolate_xccy_basis(currency: str, tenor: float) -> Optional[float]:
+    """
+    Interpolate cross-currency basis for a currency vs USD at given tenor.
+    Returns basis in bps. 
+    
+    SIGN CONVENTION (for USD → CCY direction):
+    - POSITIVE = USD investor benefits when going to this currency
+    - NEGATIVE = USD investor pays when going to this currency
+    """
     currency = currency.upper()
-    if currency not in FALLBACK_HEDGING_COST:
+    if currency not in XCCY_BASIS_VS_USD:
         return None
     
-    curve = FALLBACK_HEDGING_COST[currency]
+    curve = XCCY_BASIS_VS_USD[currency]
     tenors = sorted(curve.keys())
     
     if tenor <= tenors[0]:
@@ -1411,6 +1415,24 @@ def interpolate_hedging_cost(currency: str, tenor: float) -> Optional[float]:
             return r1 + (r2 - r1) * (tenor - t1) / (t2 - t1)
     
     return None
+
+
+# Aliases for backwards compatibility
+def interpolate_implied_usd_rate(currency: str, tenor: float) -> Optional[float]:
+    """DEPRECATED: Use interpolate_xccy_basis"""
+    return interpolate_xccy_basis(currency, tenor)
+
+
+def interpolate_local_rate(currency: str, tenor: float) -> Optional[float]:
+    """DEPRECATED"""
+    return None
+
+
+def interpolate_hedging_cost(currency: str, tenor: float) -> Optional[float]:
+    """DEPRECATED: Use interpolate_xccy_basis"""
+    return interpolate_xccy_basis(currency, tenor)
+
+
 
 
 async def get_hedging_cost_async(base_currency: str, target_currency: str, tenor: float) -> dict:
@@ -1446,43 +1468,44 @@ async def get_hedging_cost_async(base_currency: str, target_currency: str, tenor
     
     # Special handling for BRL - use live B3 + FRED data
     # Cupom Cambial is the IMPLIED USD rate in Brazil (derived from FX forwards)
-    # So (Cupom Cambial - SOFR) gives actual hedge cost, not just rate differential
+    # Formula: Hedge Cost = Base_Implied - Target_Implied
     if (base == 'USD' and target == 'BRL') or (base == 'BRL' and target == 'USD'):
         try:
             b3_client = B3Client()
             
-            # Get Cupom Cambial from B3 (this is the key - it's the IMPLIED USD rate)
+            # Get Cupom Cambial from B3 (IMPLIED USD rate in BRL market)
             cupom_cambial = await b3_client.get_cupom_cambial_for_tenor(tenor)
             
-            # Get SOFR from FRED (actual USD rate)
+            # Get SOFR from FRED (IMPLIED USD rate for USD, which IS the USD rate)
             sofr = await fred_client.get_sofr()
             
             if cupom_cambial is not None and sofr is not None:
-                # Hedge benefit = Implied USD rate in Brazil - Actual USD rate
-                hedge_benefit_pp = cupom_cambial - sofr
-                hedge_benefit_bps = hedge_benefit_pp * 100
+                # BRL implied rate = Cupom Cambial
+                # USD implied rate = SOFR
                 
-                # Direction adjustment
-                if base == 'BRL':
-                    hedge_benefit_bps = -hedge_benefit_bps
+                if base == 'USD':
+                    # USD → BRL: Cost = USD_implied - BRL_implied = SOFR - Cupom
+                    hedge_cost_bps = (sofr - cupom_cambial) * 100
+                else:
+                    # BRL → USD: Cost = BRL_implied - USD_implied = Cupom - SOFR
+                    hedge_cost_bps = (cupom_cambial - sofr) * 100
                 
                 return {
-                    "cost_bps": round(hedge_benefit_bps, 1),
+                    "cost_bps": round(hedge_cost_bps, 1),
                     "source": "B3 + FRED",
                     "is_live": True,
                     "instrument": "DDI Futures / FRC (Cupom Cambial)",
-                    "notes": f"Cupom Cambial ({cupom_cambial:.2f}%) - SOFR ({sofr:.2f}%)",
-                    "target_rate": round(cupom_cambial, 4),
-                    "target_rate_name": "Cupom Cambial",
-                    "target_rate_source": "B3",
-                    "base_rate": round(sofr, 4),
-                    "base_rate_name": "SOFR",
-                    "base_rate_source": "FRED",
-                    "calculation": f"({cupom_cambial:.2f} - {sofr:.2f}) × 100 = {hedge_benefit_bps:.1f} bps",
+                    "notes": f"Live: Cupom Cambial ({cupom_cambial:.2f}%), SOFR ({sofr:.2f}%)",
+                    "base_implied_rate": round(cupom_cambial if base == 'BRL' else sofr, 4),
+                    "target_implied_rate": round(sofr if base == 'BRL' else cupom_cambial, 4),
+                    "cupom_cambial": round(cupom_cambial, 4),
+                    "sofr": round(sofr, 4),
+                    "calculation": f"({cupom_cambial if base == 'BRL' else sofr:.2f} - {sofr if base == 'BRL' else cupom_cambial:.2f}) × 100 = {hedge_cost_bps:.1f} bps",
                     "base_currency": base,
                     "target_currency": target,
                     "tenor": tenor,
-                    "data_quality": "live"
+                    "data_quality": "live",
+                    "methodology": get_methodology_for_pair(base, target)
                 }
         except Exception as e:
             logger.error(f"Live BRL hedging cost fetch failed: {e}")
@@ -1531,15 +1554,20 @@ async def get_hedging_cost_async(base_currency: str, target_currency: str, tenor
 
 def get_hedging_cost_sync(base_currency: str, target_currency: str, tenor: float) -> dict:
     """
-    Synchronous fallback for hedging cost calculation.
-    Uses static reference data when live data is unavailable.
+    Calculate hedging cost between two currencies using cross-currency basis.
     
-    IMPORTANT: The hedging cost represents what you PAY or GAIN when hedging
-    from base currency to target currency.
+    IMPORTANT: This is the XCCY BASIS - the deviation from CIP, NOT the full
+    interest rate differential! The interest rate differential is already
+    captured in the CIP conversion formula.
     
-    For EM currencies like ARS with extreme NDF implied rates:
-    - ARS → USD: You're selling ARS forward at a steep discount (high cost to you)
-    - USD → ARS: You're buying ARS forward at a steep discount (benefit to you)
+    TYPICAL RANGES:
+    - G10 currencies: -10 to -50 bps (small)
+    - BRL (Cupom - SOFR): +50 to +200 bps (convertibility premium)
+    - ARS (NDF basis): -500 to -1500 bps (large due to capital controls)
+    
+    SIGN CONVENTION (for USD → CCY):
+    - POSITIVE = benefit (actual forward better than CIP-implied)
+    - NEGATIVE = cost (actual forward worse than CIP-implied)
     """
     base = base_currency.upper()
     target = target_currency.upper()
@@ -1555,95 +1583,42 @@ def get_hedging_cost_sync(base_currency: str, target_currency: str, tenor: float
             "data_quality": "N/A"
         }
     
-    # Get base info
-    base_info = HEDGING_COST_INFO.get(base, {'type': 'unknown', 'instrument': 'Unknown', 'notes': '', 'data_quality': 'unknown'})
-    target_info = HEDGING_COST_INFO.get(target, {'type': 'unknown', 'instrument': 'Unknown', 'notes': '', 'data_quality': 'unknown'})
+    # Get xccy basis for both currencies vs USD
+    base_basis = interpolate_xccy_basis(base, tenor) or 0
+    target_basis = interpolate_xccy_basis(target, tenor) or 0
     
-    # Get costs from lookup (these are USD-based: cost of hedging USD → CCY)
-    base_cost = interpolate_hedging_cost(base, tenor) or 0
-    target_cost = interpolate_hedging_cost(target, tenor) or 0
+    # Calculate hedge cost
+    # For USD → CCY: cost = target_basis (directly use the basis)
+    # For CCY → USD: cost = -base_basis (flip sign)
+    # For CCY1 → CCY2 (cross): cost = target_basis - base_basis
     
-    # Determine data quality - use lowest quality of the pair
-    base_quality = base_info.get('data_quality', 'estimate')
-    target_quality = target_info.get('data_quality', 'estimate')
-    
-    # Calculate hedging cost based on direction
-    # The FALLBACK_HEDGING_COST values are stored as: cost of hedging USD → CCY
-    # Positive = benefit (you gain carry), Negative = cost (you pay carry)
-    
-    if base == 'USD' and target == 'BRL':
-        # USD → BRL: Use BRL fallback directly (stored as positive = benefit)
-        cost_bps = target_cost
-        instrument = "DDI Futures / FRC"
-        notes = f"Cupom cambial estimate ({base}→{target})"
-        data_quality = "estimate"  # Would be 'live' if B3 data were fetched
-        typical_range = target_info.get('typical_range', '')
-    elif base == 'BRL' and target == 'USD':
-        # BRL → USD: Invert (you pay instead of receive)
-        cost_bps = -interpolate_hedging_cost('BRL', tenor)
-        instrument = "DDI Futures / FRC"
-        notes = f"Cupom cambial estimate ({base}→{target})"
-        data_quality = "estimate"
-        typical_range = "-150 to -50 bps"  # Inverted BRL range
-    
-    # ARS special handling - extreme NDF market
-    elif base == 'USD' and target == 'ARS':
-        # USD → ARS: You receive the high implied rate (benefit)
-        # The fallback is stored as negative because hedging USD→ARS typically 
-        # means receiving devaluation premium
-        cost_bps = -target_cost  # Flip sign: ARS stored as negative, but USD→ARS is a benefit
-        instrument = "Non-Deliverable Forward (NDF)"
-        notes = f"ARS NDF implied rate ({base}→{target}) • High devaluation premium"
-        data_quality = "estimate"
-        typical_range = "+500 to +2000 bps (devaluation premium)"
-    elif base == 'ARS' and target == 'USD':
-        # ARS → USD: You pay the high implied rate (cost)
-        cost_bps = target_cost if target_cost else interpolate_hedging_cost('ARS', tenor)
-        cost_bps = interpolate_hedging_cost('ARS', tenor)  # Use ARS cost directly (already negative)
-        instrument = "Non-Deliverable Forward (NDF)"
-        notes = f"ARS NDF implied rate ({base}→{target}) • High devaluation cost"
-        data_quality = "estimate"
-        typical_range = "-500 to -2000 bps"
-    elif base == 'ARS':
-        # ARS → any other currency (via USD)
-        # Cost = ARS→USD cost + USD→target cost
-        ars_to_usd_cost = interpolate_hedging_cost('ARS', tenor)  # Negative (you pay)
-        usd_to_target_cost = interpolate_hedging_cost(target, tenor) or 0
-        cost_bps = ars_to_usd_cost + usd_to_target_cost
-        instrument = "NDF + Cross-Currency"
-        notes = f"Via USD: ARS→USD ({ars_to_usd_cost:.0f} bps) + USD→{target} ({usd_to_target_cost:.0f} bps)"
-        data_quality = "estimate"
-        typical_range = target_info.get('typical_range', '')
-    elif target == 'ARS':
-        # Any currency → ARS (via USD)
-        # Cost = base→USD cost + USD→ARS cost (which is a benefit)
-        base_to_usd_cost = -interpolate_hedging_cost(base, tenor) if base != 'USD' else 0
-        usd_to_ars_benefit = -interpolate_hedging_cost('ARS', tenor)  # Flip: you receive premium
-        cost_bps = base_to_usd_cost + usd_to_ars_benefit
-        instrument = "Cross-Currency + NDF"
-        notes = f"Via USD: {base}→USD ({base_to_usd_cost:.0f} bps) + USD→ARS ({usd_to_ars_benefit:.0f} bps)"
-        data_quality = "estimate"
-        typical_range = "+500 to +2000 bps (devaluation premium)"
-    
-    elif base in ['BRL', 'CNY']:
-        cost_bps = base_cost
-        instrument = f"{base} NDF / Futures"
-        notes = f"Reference estimate ({base}→{target})"
-        data_quality = "estimate"
-        typical_range = base_info.get('typical_range', '')
-    elif target in ['BRL', 'CNY']:
-        cost_bps = -target_cost
-        instrument = f"{target} NDF / Futures"
-        notes = f"Reference estimate ({base}→{target})"
-        data_quality = "estimate"
-        typical_range = target_info.get('typical_range', '')
+    if base == 'USD':
+        cost_bps = target_basis
+    elif target == 'USD':
+        cost_bps = -base_basis
     else:
-        # Both are G10/deliverable - use cross-currency basis difference
-        cost_bps = target_cost - base_cost
+        cost_bps = target_basis - base_basis
+    
+    # Determine instrument type
+    em_currencies = ['BRL', 'ARS', 'CNY']
+    
+    if base == 'BRL' or target == 'BRL':
+        instrument = "DDI Futures / FRC (Cupom Cambial)"
+        notes = f"Basis: {base}={base_basis:+.0f}bps, {target}={target_basis:+.0f}bps"
+    elif base == 'ARS' or target == 'ARS':
+        instrument = "Non-Deliverable Forward (NDF)"
+        notes = f"ARS NDF basis reflects capital controls • {base}={base_basis:+.0f}bps, {target}={target_basis:+.0f}bps"
+    elif base == 'CNY' or target == 'CNY':
+        instrument = "Non-Deliverable Forward (NDF)"
+        notes = f"CNY restricted currency • {base}={base_basis:+.0f}bps, {target}={target_basis:+.0f}bps"
+    else:
         instrument = "Cross-Currency Basis Swap"
-        notes = f"{base}/{target} xccy basis • Reference estimate"
-        data_quality = "estimate"
-        typical_range = target_info.get('typical_range', '')
+        notes = f"G10 xccy basis • {base}={base_basis:+.0f}bps, {target}={target_basis:+.0f}bps"
+    
+    # Data quality
+    base_quality = HEDGING_COST_DATA_QUALITY.get(base, 'estimate')
+    target_quality = HEDGING_COST_DATA_QUALITY.get(target, 'estimate')
+    data_quality = 'estimate' if 'estimate' in [base_quality, target_quality] else 'live_or_estimate'
     
     return {
         "cost_bps": round(cost_bps, 1),
@@ -1655,11 +1630,70 @@ def get_hedging_cost_sync(base_currency: str, target_currency: str, tenor: float
         "target_currency": target,
         "tenor": tenor,
         "data_quality": data_quality,
-        "typical_range": typical_range,
-        "base_type": base_info.get('type', 'unknown'),
-        "target_type": target_info.get('type', 'unknown'),
-        "warning": "⚠️ No free live data source available for G10 xccy basis. Use manual override for precise hedging."
+        "base_basis_bps": base_basis,
+        "target_basis_bps": target_basis,
+        "methodology": get_methodology_for_pair(base, target)
     }
+
+
+def get_methodology_for_pair(base: str, target: str) -> str:
+    """Return methodology explanation for a currency pair"""
+    
+    if base == 'BRL' or target == 'BRL':
+        return """CUPOM CAMBIAL METHOD (Brazil)
+        
+The Cupom Cambial is the implied USD interest rate embedded in Brazilian 
+FX forwards and futures (DDI/FRC contracts at B3).
+
+It represents what you'd earn on USD hedged within Brazil's onshore market.
+The formula is: Hedge Cost = Cupom Cambial - SOFR
+
+If Cupom Cambial > SOFR: USD→BRL gives you POSITIVE carry
+If Cupom Cambial < SOFR: USD→BRL costs you (NEGATIVE carry)
+
+Live data source: B3 (Brasil, Bolsa, Balcão)"""
+    
+    elif base == 'ARS' or target == 'ARS':
+        return """NDF IMPLIED RATE METHOD (Argentina)
+
+Argentina has capital controls, so the ARS/USD forward is a Non-Deliverable 
+Forward (NDF) traded offshore. The NDF rate prices in expected peso devaluation.
+
+The implied USD rate in ARS is VERY HIGH (30-50%+) because the market expects 
+significant peso depreciation. This creates:
+
+- ARS → Strong CCY: POSITIVE carry (you receive the devaluation premium)
+- Strong CCY → ARS: NEGATIVE carry (you pay the devaluation premium)
+
+Note: These are ESTIMATES. Actual NDF rates fluctuate significantly."""
+    
+    elif base == 'CNY' or target == 'CNY':
+        return """NDF IMPLIED RATE METHOD (China)
+
+The CNY is a restricted currency with managed float. Offshore CNY (CNH) and 
+onshore CNY can differ. NDF rates reflect market expectations of depreciation.
+
+The implied USD rate is typically higher than onshore rates, reflecting 
+a modest depreciation premium.
+
+Note: These are ESTIMATES based on typical NDF spreads."""
+    
+    else:
+        return """CROSS-CURRENCY BASIS METHOD (G10)
+
+For freely tradeable G10 currencies, the hedge cost is the cross-currency 
+basis swap spread - the deviation from Covered Interest Parity (CIP).
+
+In theory, CIP should hold and hedging should be costless. In practice, 
+there's a persistent "xccy basis" of typically -10 to -50 bps for most 
+G10 currencies vs USD.
+
+This basis reflects:
+- USD funding scarcity
+- Bank balance sheet constraints  
+- Regulatory capital requirements
+
+Note: Live xccy basis data requires paid market data terminals."""
 
 
 # Keep sync version for non-async contexts
