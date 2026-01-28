@@ -2171,6 +2171,8 @@
                 <div class="live-dot"><span class="dot" id="dotJPY"></span> JPY</div>
                 <div class="live-dot"><span class="dot" id="dotCAD"></span> CAD</div>
                 <div class="live-dot"><span class="dot" id="dotAUD"></span> AUD</div>
+                <div class="live-dot"><span class="dot" id="dotARS"></span> ARS</div>
+                <div class="live-dot"><span class="dot" id="dotCNY"></span> CNY</div>
             </div>
         </header>
         
@@ -2625,30 +2627,42 @@
                 const instrumentEl = document.getElementById('hedgingCostInstrument');
                 const explanationEl = document.getElementById('hedgingCostExplanation');
                 
-                // Safety check for cost_bps
+                // Check if manual entry is required (e.g., ARS)
+                const requiresManual = data.requires_manual || false;
                 const costBps = data.cost_bps ?? 0;
                 
-                // Format rate with sign
-                if (costBps < 0) {
-                    rateEl.textContent = `${costBps.toFixed(1)} bps`;
-                    rateEl.className = 'hedging-cost-rate negative';
-                } else if (costBps > 0) {
-                    rateEl.textContent = `+${costBps.toFixed(1)} bps`;
-                    rateEl.className = 'hedging-cost-rate positive';
-                } else {
-                    rateEl.textContent = '0 bps';
+                if (requiresManual) {
+                    // ARS or other capital-controlled currencies
+                    rateEl.textContent = '— bps';
                     rateEl.className = 'hedging-cost-rate neutral';
+                    sourceEl.textContent = 'Manual';
+                    sourceEl.className = 'hedging-cost-source';
+                    instrumentEl.textContent = data.instrument || 'NDF';
+                    explanationEl.textContent = 'Capital controls • Enter NDF quote below';
+                    suggestedHedgingCost = null; // No auto-suggestion
+                } else {
+                    // Normal currencies - show calculated value
+                    if (costBps < 0) {
+                        rateEl.textContent = `${costBps.toFixed(1)} bps`;
+                        rateEl.className = 'hedging-cost-rate negative';
+                    } else if (costBps > 0) {
+                        rateEl.textContent = `+${costBps.toFixed(1)} bps`;
+                        rateEl.className = 'hedging-cost-rate positive';
+                    } else {
+                        rateEl.textContent = '0 bps';
+                        rateEl.className = 'hedging-cost-rate neutral';
+                    }
+                    
+                    // Source badge
+                    sourceEl.textContent = data.is_live ? '★ Live' : 'Reference';
+                    sourceEl.className = 'hedging-cost-source' + (data.is_live ? ' live' : '');
+                    
+                    // Instrument info
+                    instrumentEl.textContent = `${data.instrument}`;
+                    
+                    // Explanation text
+                    explanationEl.textContent = getHedgingCostExplanation(baseCurrency, firstTarget, costBps, false);
                 }
-                
-                // Source badge
-                sourceEl.textContent = data.is_live ? '★ Live' : 'Reference';
-                sourceEl.className = 'hedging-cost-source' + (data.is_live ? ' live' : '');
-                
-                // Instrument info
-                instrumentEl.textContent = `${data.instrument}`;
-                
-                // Explanation text based on currencies
-                explanationEl.textContent = getHedgingCostExplanation(baseCurrency, firstTarget, costBps);
                 
                 // Update methodology modal with real data
                 updateMethodologyModal(data);
@@ -2664,46 +2678,19 @@
         }
         
         // Get explanation text for hedging cost
-        function getHedgingCostExplanation(baseCcy, targetCcy, costBps) {
+        function getHedgingCostExplanation(baseCcy, targetCcy, costBps, requiresManual) {
             // Currency-specific explanations
-            const explanations = {
-                'BRL': 'Convertibility premium (onshore/offshore spread)',
-                'ARS': 'NDF basis from capital controls',
-                'CNY': 'Restricted currency NDF premium',
-                'EUR': 'EUR/USD cross-currency basis',
-                'GBP': 'GBP/USD cross-currency basis',
-                'JPY': 'JPY/USD cross-currency basis (typically wider)',
-                'CHF': 'CHF/USD cross-currency basis',
-                'CAD': 'CAD/USD cross-currency basis',
-                'AUD': 'AUD/USD cross-currency basis',
-            };
-            
-            // Determine which currency drives the explanation
-            let explanation = '';
-            
             if (baseCcy === 'BRL' || targetCcy === 'BRL') {
-                explanation = explanations['BRL'];
-            } else if (baseCcy === 'ARS' || targetCcy === 'ARS') {
-                explanation = explanations['ARS'];
+                return costBps >= 0 ? 'Convertibility premium • You receive' : 'Convertibility premium • You pay';
             } else if (baseCcy === 'CNY' || targetCcy === 'CNY') {
-                explanation = explanations['CNY'];
-            } else if (baseCcy !== 'USD' && targetCcy !== 'USD') {
-                // Cross pair - use the non-USD currency
-                const nonUSD = baseCcy !== 'USD' ? baseCcy : targetCcy;
-                explanation = explanations[nonUSD] || 'Cross-currency basis';
+                return costBps >= 0 ? 'NDF basis • You receive' : 'NDF basis • You pay';
             } else {
-                // USD pair
-                const nonUSD = baseCcy !== 'USD' ? baseCcy : targetCcy;
-                explanation = explanations[nonUSD] || 'Cross-currency basis vs USD';
+                // G10 xccy basis
+                if (Math.abs(costBps) < 1) {
+                    return 'Xccy basis';
+                }
+                return costBps > 0 ? 'Xccy basis • You receive' : 'Xccy basis • You pay';
             }
-            
-            // Add direction hint
-            if (costBps > 0) {
-                return explanation + ' • You receive carry';
-            } else if (costBps < 0) {
-                return explanation + ' • You pay carry';
-            }
-            return explanation;
         }
         
         // Update methodology modal with actual data
@@ -3010,6 +2997,8 @@
                     document.getElementById('dotJPY').className = 'dot' + (fred ? ' active' : '');
                     document.getElementById('dotCAD').className = 'dot' + (fred ? ' active' : '');
                     document.getElementById('dotAUD').className = 'dot' + (fred ? ' active' : '');
+                    document.getElementById('dotARS').className = 'dot'; // Reference only
+                    document.getElementById('dotCNY').className = 'dot'; // Reference only
                 }
             } catch (e) {
                 console.error('Status check failed:', e);
