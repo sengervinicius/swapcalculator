@@ -1,4034 +1,2130 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>CrossFX Yield | Hedged Return Calculator - CIP-Based Currency Conversion</title>
+"""
+Hedged Return Converter - FastAPI Backend with Live API Integrations
+Production-ready with real market data from:
+- BCB (Brazil): SELIC Target Rate (FREE, no auth!)
+- FRED (US): Fed Funds, SOFR, Treasury Yields  
+- ECB (Europe): EURIBOR, €STR
+- Bank of England (UK): SONIA, Gilt Yields
+"""
+
+from fastapi import FastAPI, HTTPException
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field
+from typing import Optional, List, Dict, Any
+from datetime import datetime, timedelta
+import math
+import os
+from pathlib import Path
+import logging
+
+# Try to import httpx for async HTTP requests
+try:
+    import httpx
+    HTTPX_AVAILABLE = True
+except ImportError:
+    HTTPX_AVAILABLE = False
+    print("⚠️  httpx not installed. Run: pip install httpx")
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# ============================================================================
+# APP SETUP
+# ============================================================================
+
+app = FastAPI(
+    title="Hedged Return Converter API",
+    description="CIP-based hedged return calculations with live market data",
+    version="5.0.0"
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# ============================================================================
+# CONFIGURATION
+# ============================================================================
+
+class Config:
+    # BCB (Brazil) - FREE, no authentication needed!
+    BCB_BASE_URL = "https://api.bcb.gov.br/dados/serie/bcdata.sgs"
     
-    <!-- SEO Meta Tags -->
-    <meta name="description" content="Calculate CIP-based hedged returns across currencies with live market data. Convert yields between BRL, USD, EUR, GBP, CHF, JPY, and more with real-time risk-free rates.">
-    <meta name="keywords" content="hedged return, currency conversion, CIP, cross-currency, yield calculator, FX hedging, risk-free rates, SELIC, SOFR, EURIBOR, interest rate parity">
-    <meta name="author" content="Vinicius Senger">
-    <meta name="robots" content="index, follow">
-    <link rel="canonical" href="https://crossfx-yield.com/">
+    # FRED (US) - Your API key
+    FRED_API_KEY = os.getenv("FRED_API_KEY", "0b8a5bfbf530a745acdc11e69c5d32c4")
+    FRED_BASE_URL = "https://api.stlouisfed.org/fred"
     
-    <!-- Open Graph / Social Media -->
-    <meta property="og:type" content="website">
-    <meta property="og:url" content="https://crossfx-yield.com/">
-    <meta property="og:title" content="CrossFX Yield | Hedged Return Calculator">
-    <meta property="og:description" content="Calculate CIP-based hedged returns across currencies with live market data from BCB, FRED, ECB, and BoE.">
-    <meta property="og:image" content="https://crossfx-yield.com/static/icons/icon-512x512.png">
-    <meta property="og:site_name" content="CrossFX Yield">
+    # ECB (Europe) - No API key required
+    ECB_SDMX_URL = "https://data-api.ecb.europa.eu/service/data"
     
-    <!-- Twitter Card -->
-    <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="CrossFX Yield | Hedged Return Calculator">
-    <meta name="twitter:description" content="Calculate CIP-based hedged returns across currencies with live market data.">
-    <meta name="twitter:image" content="https://crossfx-yield.com/static/icons/icon-512x512.png">
+    # Bank of England (UK) - No API key required
+    BOE_BASE_URL = "http://www.bankofengland.co.uk/boeapps/iadb/fromshowcolumns.asp"
     
-    <!-- PWA / Mobile App -->
-    <link rel="manifest" href="/static/manifest.json">
-    <meta name="theme-color" content="#22c55e">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="CrossFX Yield">
-    <link rel="apple-touch-icon" href="/static/icons/icon-192x192.png">
+    # Cache TTL
+    CACHE_TTL = 1800  # 30 minutes
+
+config = Config()
+
+# ============================================================================
+# DATA MODELS
+# ============================================================================
+
+class RiskFreeRateRequest(BaseModel):
+    currency: str = Field(..., description="Currency code")
+    tenor: float = Field(..., gt=0, description="Tenor in years")
+
+class CIPCalculationRequest(BaseModel):
+    base_currency: str
+    base_indexer_key: str
+    target_currency: str
+    spread: float = Field(..., ge=0, le=100)
+    tenor: float = Field(..., gt=0, le=50)
+    include_hedging_cost: bool = Field(default=False, description="Include hedging cost in calculation")
+    hedging_cost_bps: Optional[float] = Field(default=None, description="Manual hedging cost override in bps")
+
+class AssumptionItem(BaseModel):
+    name: str
+    value_pp: Optional[float]
+    tenor_label: str
+    source_name: str
+
+class CIPCalculationResponse(BaseModel):
+    ccy_base: str
+    ccy_target: str
+    tenor_years: float
+    as_of_date: str
+    indexer_value: float
+    spread_value: float
+    all_in_base_pp: float
+    risk_free_base: float
+    risk_free_target: float
+    hedging_cost_bps: Optional[float] = None
+    hedged_return_pp: float  # The main hedged return (after hedging cost if included)
+    usd_equiv_pp: float
+    total_return_target_pp: float
+    total_return_base_pp: float
+    total_return_pp: float
+    assumptions: List[AssumptionItem]
+    warnings: List[str]
+
+class RiskFreeRateResponse(BaseModel):
+    currency: str
+    tenor: float
+    rate: float
+    source: str
+
+class IndexerResponse(BaseModel):
+    key: str
+    label: str
+    value: float
+
+# ============================================================================
+# CACHE
+# ============================================================================
+
+class SimpleCache:
+    def __init__(self, ttl: int = 1800):
+        self._cache: Dict[str, tuple] = {}
+        self._ttl = ttl
     
-    <!-- Favicon -->
-    <link rel="icon" type="image/png" sizes="32x32" href="/static/icons/icon-96x96.png">
-    <link rel="icon" type="image/png" sizes="16x16" href="/static/icons/icon-72x72.png">
+    def get(self, key: str) -> Optional[Any]:
+        if key in self._cache:
+            value, timestamp = self._cache[key]
+            if datetime.now().timestamp() - timestamp < self._ttl:
+                return value
+            del self._cache[key]
+        return None
     
-    <!-- Structured Data / JSON-LD -->
-    <script type="application/ld+json">
-    {
-        "@context": "https://schema.org",
-        "@type": "WebApplication",
-        "name": "CrossFX Yield",
-        "description": "Calculate CIP-based hedged returns across currencies with live market data",
-        "url": "https://crossfx-yield.com",
-        "applicationCategory": "FinanceApplication",
-        "operatingSystem": "Any",
-        "offers": {
-            "@type": "Offer",
-            "price": "0",
-            "priceCurrency": "USD"
-        },
-        "author": {
-            "@type": "Person",
-            "name": "Vinicius Senger"
+    def set(self, key: str, value: Any):
+        self._cache[key] = (value, datetime.now().timestamp())
+    
+    def clear(self):
+        self._cache.clear()
+
+cache = SimpleCache(ttl=config.CACHE_TTL)
+
+# ============================================================================
+# FALLBACK DATA (current as of Jan 2025)
+# ============================================================================
+
+FALLBACK_INDEXERS = {
+    'BRL': [
+        {'key': 'none', 'label': 'No indexer', 'value': 0.0},
+        {'key': 'selic', 'label': 'SELIC (Brazil)', 'value': 13.25},
+        {'key': 'ipca', 'label': 'IPCA (Brazil)', 'value': 4.50}
+    ],
+    'USD': [
+        {'key': 'none', 'label': 'No indexer', 'value': 0.0},
+        {'key': 'fed-funds', 'label': 'Fed Funds Rate', 'value': 4.33},
+        {'key': 'sofr', 'label': 'SOFR (USD)', 'value': 4.30},
+        {'key': 'bond-10yr', 'label': '10Y US Treasury', 'value': 4.60}
+    ],
+    'EUR': [
+        {'key': 'none', 'label': 'No indexer', 'value': 0.0},
+        {'key': 'euribor', 'label': 'EURIBOR 12M', 'value': 2.50},
+        {'key': 'estr', 'label': '€STR', 'value': 2.90}
+    ],
+    'GBP': [
+        {'key': 'none', 'label': 'No indexer', 'value': 0.0},
+        {'key': 'gbp-sonia', 'label': 'SONIA', 'value': 4.45}
+    ],
+    'CHF': [
+        {'key': 'none', 'label': 'No indexer', 'value': 0.0},
+        {'key': 'saron', 'label': 'SARON (Swiss)', 'value': 0.45},
+        {'key': 'snb-rate', 'label': 'SNB Policy Rate', 'value': 0.50}
+    ],
+    'JPY': [
+        {'key': 'none', 'label': 'No indexer', 'value': 0.0},
+        {'key': 'tonar', 'label': 'TONAR (Japan)', 'value': 0.23},
+        {'key': 'boj-rate', 'label': 'BoJ Policy Rate', 'value': 0.25}
+    ],
+    'CNY': [
+        {'key': 'none', 'label': 'No indexer', 'value': 0.0},
+        {'key': 'lpr-1y', 'label': 'LPR 1Y (China)', 'value': 3.10},
+        {'key': 'lpr-5y', 'label': 'LPR 5Y (China)', 'value': 3.60}
+    ],
+    'CAD': [
+        {'key': 'none', 'label': 'No indexer', 'value': 0.0},
+        {'key': 'corra', 'label': 'CORRA (Canada)', 'value': 3.20},
+        {'key': 'boc-rate', 'label': 'BoC Policy Rate', 'value': 3.25}
+    ],
+    'AUD': [
+        {'key': 'none', 'label': 'No indexer', 'value': 0.0},
+        {'key': 'aonia', 'label': 'AONIA (Australia)', 'value': 4.10},
+        {'key': 'rba-rate', 'label': 'RBA Cash Rate', 'value': 4.10}
+    ],
+    'ARS': [
+        {'key': 'none', 'label': 'No indexer', 'value': 0.0},
+        {'key': 'badlar', 'label': 'BADLAR (Argentina)', 'value': 37.00},
+        {'key': 'bcra-rate', 'label': 'BCRA Policy Rate', 'value': 32.00}
+    ]
+}
+
+FALLBACK_RISK_FREE = {
+    'BRL': {1: 15.00, 2: 14.80, 3: 14.60, 5: 14.20, 10: 13.50},
+    'USD': {1: 4.35, 2: 4.20, 3: 4.10, 5: 4.00, 10: 4.60},
+    'EUR': {1: 2.50, 2: 2.40, 3: 2.30, 5: 2.15, 10: 2.50},
+    'GBP': {1: 4.40, 2: 4.25, 3: 4.15, 5: 4.00, 10: 4.50},
+    'CHF': {1: 0.50, 2: 0.55, 3: 0.60, 5: 0.70, 10: 0.85},
+    'JPY': {1: 0.40, 2: 0.55, 3: 0.65, 5: 0.80, 10: 1.10},
+    'CNY': {1: 1.80, 2: 1.90, 3: 2.00, 5: 2.20, 10: 2.50},
+    'CAD': {1: 3.20, 2: 3.10, 3: 3.00, 5: 2.90, 10: 3.20},
+    'AUD': {1: 4.10, 2: 4.00, 3: 3.95, 5: 3.90, 10: 4.20},
+    'ARS': {1: 40.00, 2: 45.00, 3: 50.00, 5: 55.00, 10: 60.00}  # Very high rates, indicative
+}
+
+# ============================================================================
+# HEDGING COST / CROSS-CURRENCY BASIS
+# 
+# IMPORTANT: The hedge cost is NOT the interest rate differential!
+# The interest rate differential is already captured in the CIP conversion formula.
+#
+# The hedge cost is the CROSS-CURRENCY BASIS - the small deviation from CIP
+# that exists in real markets due to:
+# - USD funding scarcity
+# - Bank balance sheet constraints
+# - Convertibility premiums (for EM currencies)
+# - Regulatory capital requirements
+#
+# TYPICAL RANGES:
+# - G10 currencies: -10 to -50 bps (you PAY a small premium for USD)
+# - BRL: +50 to +150 bps (Cupom Cambial > SOFR = you RECEIVE a small benefit)
+# - ARS: Complex - NDF market has large basis due to capital controls
+#
+# SIGN CONVENTION:
+# - POSITIVE = benefit when hedging (actual forward better than CIP-implied)
+# - NEGATIVE = cost when hedging (actual forward worse than CIP-implied)
+# ============================================================================
+
+# Cross-currency basis vs USD (in bps)
+# These represent the DEVIATION from CIP, not the full rate differential
+# Most values should be SMALL (-50 to +50 bps) except for restricted currencies
+XCCY_BASIS_VS_USD = {
+    'USD': {1: 0, 2: 0, 3: 0, 5: 0, 10: 0},  # USD is the base
+    # G10: Small negative basis (USD funding premium)
+    'EUR': {1: -15, 2: -18, 3: -20, 5: -22, 10: -25},
+    'GBP': {1: -8, 2: -10, 3: -12, 5: -12, 10: -15},
+    'JPY': {1: -30, 2: -35, 3: -40, 5: -45, 10: -50},
+    'CHF': {1: -18, 2: -20, 3: -22, 5: -25, 10: -28},
+    'CAD': {1: -5, 2: -6, 3: -8, 5: -10, 10: -10},
+    'AUD': {1: -3, 2: -3, 3: -5, 5: -5, 10: -5},
+    # BRL: Small positive (convertibility premium)
+    # This should be SMALL - the big CDI-SOFR diff is already in CIP
+    'BRL': {1: 15, 2: 20, 3: 25, 5: 35, 10: 45},
+    # ARS: Capital controls - hedging via NDF is complex, show 0 and let user override
+    # The NDF premium is NOT a simple xccy basis - it's a different market
+    'ARS': {1: 0, 2: 0, 3: 0, 5: 0, 10: 0},
+    # CNY: Restricted but more liquid - small basis
+    'CNY': {1: -10, 2: -15, 3: -18, 5: -22, 10: -30},
+}
+
+# Currencies where hedging cost suggestion should show "Manual entry recommended"
+MANUAL_HEDGE_CURRENCIES = {'ARS'}  # Add others if needed
+
+# Data quality indicators
+HEDGING_COST_DATA_QUALITY = {
+    'BRL': 'live',      # Live B3 data when available
+    'EUR': 'live_or_estimate',
+    'GBP': 'live_or_estimate',
+    'JPY': 'live_or_estimate',
+    'CHF': 'live_or_estimate',
+    'CAD': 'live_or_estimate',
+    'AUD': 'live_or_estimate',
+    'ARS': 'estimate',  # NDF market - no free public source
+    'CNY': 'estimate',  # Restricted currency - no free public source
+    'USD': 'base',
+}
+
+# Cupom Cambial cache - stores live data from B3
+_cupom_cambial_cache: Dict[str, tuple] = {}
+_cupom_cambial_cache_ttl = 3600  # 1 hour
+
+# Hedging cost descriptions for UI - with data quality indicators
+# NOTE: Hedge cost ≠ Interest rate differential!
+# Hedge cost = Cross-currency basis (deviation from CIP)
+# BRL uses Cupom Cambial, G10 uses FX forward implied basis
+HEDGING_COST_INFO = {
+    'USD': {
+        'type': 'base', 
+        'instrument': 'N/A (base currency)', 
+        'notes': 'Base currency - no hedge cost',
+        'data_quality': 'N/A'
+    },
+    'EUR': {
+        'type': 'xccy_basis', 
+        'instrument': 'FX Forward Implied Basis', 
+        'notes': 'EUR/USD xccy basis • Live from FX forwards or estimate',
+        'data_quality': 'live_or_estimate',
+        'typical_range': '-15 to -30 bps',
+        'source': 'Investing.com FX Forwards'
+    },
+    'GBP': {
+        'type': 'xccy_basis', 
+        'instrument': 'FX Forward Implied Basis', 
+        'notes': 'GBP/USD xccy basis • Live from FX forwards or estimate',
+        'data_quality': 'live_or_estimate',
+        'typical_range': '-5 to -20 bps'
+    },
+    'JPY': {
+        'type': 'xccy_basis', 
+        'instrument': 'Cross-Currency Basis Swap', 
+        'notes': 'JPY/USD xccy basis • Estimate - typically wider due to USD funding demand',
+        'data_quality': 'estimate',
+        'typical_range': '-30 to -60 bps'
+    },
+    'CHF': {
+        'type': 'xccy_basis', 
+        'instrument': 'Cross-Currency Basis Swap', 
+        'notes': 'CHF/USD xccy basis • Estimate (live requires Bloomberg)',
+        'data_quality': 'estimate',
+        'typical_range': '-20 to -40 bps'
+    },
+    'CAD': {
+        'type': 'xccy_basis', 
+        'instrument': 'Cross-Currency Basis Swap', 
+        'notes': 'CAD/USD xccy basis • Estimate - usually tight',
+        'data_quality': 'estimate',
+        'typical_range': '-5 to -15 bps'
+    },
+    'AUD': {
+        'type': 'xccy_basis', 
+        'instrument': 'Cross-Currency Basis Swap', 
+        'notes': 'AUD/USD xccy basis • Estimate',
+        'data_quality': 'estimate',
+        'typical_range': '-10 to +10 bps'
+    },
+    'BRL': {
+        'type': 'futures', 
+        'instrument': 'DDI Futures / FRC (Cupom Cambial)', 
+        'notes': 'Live B3 data • Cupom Cambial is IMPLIED USD rate in Brazil',
+        'data_quality': 'live',
+        'typical_range': '+50 to +150 bps'
+    },
+    'ARS': {
+        'type': 'ndf', 
+        'instrument': 'Non-Deliverable Forward (NDF)', 
+        'notes': 'ARS/USD NDF implied cost • Estimate - capital controls, high volatility',
+        'data_quality': 'estimate',
+        'typical_range': '-500 to -2000 bps'
+    },
+    'CNY': {
+        'type': 'ndf', 
+        'instrument': 'Non-Deliverable Forward (NDF)', 
+        'notes': 'CNY/USD NDF implied cost • Estimate - restricted currency',
+        'data_quality': 'estimate',
+        'typical_range': '-50 to -150 bps'
+    },
+}
+
+# ============================================================================
+# API CLIENTS
+# ============================================================================
+
+class BCBClient:
+    """Client for Banco Central do Brasil API - FREE, no auth needed!"""
+    
+    async def get_series_latest(self, series_code: int) -> Optional[float]:
+        """Get latest value from BCB SGS series"""
+        if not HTTPX_AVAILABLE:
+            return None
+            
+        cache_key = f"bcb_{series_code}"
+        cached = cache.get(cache_key)
+        if cached is not None:
+            return cached
+        
+        try:
+            url = f"{config.BCB_BASE_URL}.{series_code}/dados/ultimos/1?formato=json"
+            
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.get(url)
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    if data and len(data) > 0:
+                        value = float(data[0].get("valor", 0))
+                        cache.set(cache_key, value)
+                        logger.info(f"✅ BCB series {series_code}: {value}")
+                        return value
+        except Exception as e:
+            logger.error(f"BCB API error for series {series_code}: {e}")
+        
+        return None
+    
+    async def get_selic_target(self) -> Optional[float]:
+        """Get SELIC Target Rate (Meta SELIC)"""
+        return await self.get_series_latest(432)
+    
+    async def get_ipca(self) -> Optional[float]:
+        """Get latest IPCA (monthly)"""
+        return await self.get_series_latest(433)
+
+
+class B3Client:
+    """
+    Client for B3 (Brasil, Bolsa, Balcão) market data.
+    Fetches Cupom Cambial (DOC curve) - the implied USD rate in Brazil.
+    
+    Formula for hedge cost/benefit (USD → BRL):
+        Hedge Benefit (bps) = (Cupom Cambial - SOFR) * 100
+    
+    Data source: B3 "Taxas Referenciais" - FREE, no auth needed!
+    URL: https://www2.bmf.com.br/pages/portal/bmfbovespa/boletim1/txref1.asp
+    """
+    
+    B3_URL = "https://www2.bmf.com.br/pages/portal/bmfbovespa/boletim1/txref1.asp"
+    
+    async def get_cupom_cambial_curve(self) -> Optional[Dict[int, float]]:
+        """
+        Fetch the Cupom Limpo (DOC) curve from B3.
+        Returns dict mapping days_corridos -> rate (% p.a. linear 360)
+        """
+        if not HTTPX_AVAILABLE:
+            return None
+        
+        cache_key = "b3_cupom_limpo"
+        cached = cache.get(cache_key)
+        if cached is not None:
+            return cached
+        
+        try:
+            # Fetch Cupom Limpo page
+            params = {"idioma": "P", "Taxa": "Cupom limpo"}
+            
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                response = await client.get(self.B3_URL, params=params)
+                
+                if response.status_code == 200:
+                    # Parse the HTML table
+                    curve = self._parse_b3_rate_table(response.text)
+                    if curve:
+                        cache.set(cache_key, curve)
+                        logger.info(f"✅ B3 Cupom Cambial: {len(curve)} vertices fetched")
+                        return curve
+        except Exception as e:
+            logger.error(f"B3 API error: {e}")
+        
+        return None
+    
+    def _parse_b3_rate_table(self, html: str) -> Optional[Dict[int, float]]:
+        """Parse B3's rate table HTML to extract the curve"""
+        import re
+        
+        curve = {}
+        
+        # Look for table rows with pattern: days | rate252 | rate360
+        # The pattern in B3 tables: number | number,decimal | number,decimal
+        pattern = r'(\d+)\s*\|\s*(\d+[,\.]\d+)\s*\|\s*(\d+[,\.]\d+)'
+        
+        matches = re.findall(pattern, html)
+        
+        for match in matches:
+            try:
+                days = int(match[0])
+                # Use the 360-day linear rate (column 3) for cupom cambial
+                rate_str = match[2].replace(',', '.')
+                rate = float(rate_str)
+                curve[days] = rate
+            except (ValueError, IndexError):
+                continue
+        
+        # If regex didn't work, try simpler line-by-line parsing
+        if not curve:
+            lines = html.split('\n')
+            for line in lines:
+                # Look for lines that look like: "360 | 5.23 | 5.10"
+                parts = line.strip().split('|')
+                if len(parts) >= 3:
+                    try:
+                        days = int(parts[0].strip())
+                        rate_str = parts[2].strip().replace(',', '.')
+                        rate = float(rate_str)
+                        if 1 <= days <= 10000 and 0 <= rate <= 50:
+                            curve[days] = rate
+                    except (ValueError, IndexError):
+                        continue
+        
+        return curve if curve else None
+    
+    def interpolate_cupom_cambial(self, curve: Dict[int, float], target_days: int) -> Optional[float]:
+        """Interpolate cupom cambial rate for a specific number of days"""
+        if not curve:
+            return None
+        
+        days_list = sorted(curve.keys())
+        
+        # Edge cases
+        if target_days <= days_list[0]:
+            return curve[days_list[0]]
+        if target_days >= days_list[-1]:
+            return curve[days_list[-1]]
+        
+        # Linear interpolation
+        for i in range(len(days_list) - 1):
+            d1, d2 = days_list[i], days_list[i + 1]
+            if d1 <= target_days <= d2:
+                r1, r2 = curve[d1], curve[d2]
+                return r1 + (r2 - r1) * (target_days - d1) / (d2 - d1)
+        
+        return None
+    
+    async def get_cupom_cambial_for_tenor(self, tenor_years: float) -> Optional[float]:
+        """Get interpolated cupom cambial rate for a given tenor in years"""
+        curve = await self.get_cupom_cambial_curve()
+        if not curve:
+            return None
+        
+        # Convert years to days (using 360 day year for cupom cambial convention)
+        target_days = int(tenor_years * 360)
+        
+        return self.interpolate_cupom_cambial(curve, target_days)
+
+
+class FREDClient:
+    """Client for FRED API"""
+    
+    async def get_series_latest(self, series_id: str) -> Optional[float]:
+        if not HTTPX_AVAILABLE or not config.FRED_API_KEY:
+            return None
+            
+        cache_key = f"fred_{series_id}"
+        cached = cache.get(cache_key)
+        if cached is not None:
+            return cached
+        
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.get(
+                    f"{config.FRED_BASE_URL}/series/observations",
+                    params={
+                        "series_id": series_id,
+                        "api_key": config.FRED_API_KEY,
+                        "file_type": "json",
+                        "sort_order": "desc",
+                        "limit": 5
+                    }
+                )
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    for obs in data.get("observations", []):
+                        value = obs.get("value")
+                        if value and value != ".":
+                            rate = float(value)
+                            cache.set(cache_key, rate)
+                            logger.info(f"✅ FRED {series_id}: {rate}%")
+                            return rate
+        except Exception as e:
+            logger.error(f"FRED error {series_id}: {e}")
+        
+        return None
+    
+    async def get_fed_funds_rate(self) -> Optional[float]:
+        return await self.get_series_latest("DFF")
+    
+    async def get_sofr(self) -> Optional[float]:
+        return await self.get_series_latest("SOFR")
+    
+    async def get_treasury_yield(self, years: int) -> Optional[float]:
+        series_map = {1: "DGS1", 2: "DGS2", 3: "DGS3", 5: "DGS5", 7: "DGS7", 10: "DGS10", 20: "DGS20", 30: "DGS30"}
+        if years in series_map:
+            return await self.get_series_latest(series_map[years])
+        return None
+
+
+class ECBClient:
+    """Client for ECB API"""
+    
+    async def get_euribor(self, tenor_months: int = 12) -> Optional[float]:
+        if not HTTPX_AVAILABLE:
+            return None
+            
+        cache_key = f"ecb_euribor_{tenor_months}"
+        cached = cache.get(cache_key)
+        if cached is not None:
+            return cached
+        
+        try:
+            tenor_map = {1: "EURIBOR1MD_", 3: "EURIBOR3MD_", 6: "EURIBOR6MD_", 12: "EURIBOR1YD_"}
+            tenor_code = tenor_map.get(tenor_months, "EURIBOR1YD_")
+            
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.get(
+                    f"{config.ECB_SDMX_URL}/FM/M.U2.EUR.RT.MM.{tenor_code}.HSTA",
+                    params={"lastNObservations": 1, "format": "jsondata"},
+                    headers={"Accept": "application/json"}
+                )
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    datasets = data.get("dataSets", [{}])
+                    if datasets:
+                        series = datasets[0].get("series", {})
+                        for key, series_data in series.items():
+                            obs = series_data.get("observations", {})
+                            if obs:
+                                latest_key = max(obs.keys())
+                                rate = obs[latest_key][0]
+                                if rate is not None:
+                                    cache.set(cache_key, rate)
+                                    logger.info(f"✅ ECB EURIBOR: {rate}%")
+                                    return rate
+        except Exception as e:
+            logger.error(f"ECB error: {e}")
+        
+        return None
+
+
+class BOEClient:
+    """Client for Bank of England API"""
+    
+    async def get_series(self, series_code: str) -> Optional[float]:
+        if not HTTPX_AVAILABLE:
+            return None
+            
+        cache_key = f"boe_{series_code}"
+        cached = cache.get(cache_key)
+        if cached is not None:
+            return cached
+        
+        try:
+            end_date = datetime.now()
+            start_date = end_date - timedelta(days=30)
+            
+            # Use the correct BoE IADB URL
+            url = "https://www.bankofengland.co.uk/boeapps/iadb/fromshowcolumns.asp"
+            
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                response = await client.get(
+                    url,
+                    params={
+                        "csv.x": "yes",
+                        "Datefrom": start_date.strftime("%d/%b/%Y"),
+                        "Dateto": end_date.strftime("%d/%b/%Y"),
+                        "SeriesCodes": series_code,
+                        "CSVF": "TN",
+                        "UsingCodes": "Y",
+                        "VPD": "Y",
+                        "VFD": "N"
+                    },
+                    headers={"User-Agent": "CrossFXYield/2.3"},
+                    follow_redirects=True
+                )
+                
+                if response.status_code == 200:
+                    text = response.text.strip()
+                    lines = text.split("\n")
+                    # Parse CSV - format is: DATE, VALUE
+                    for line in reversed(lines):
+                        if not line.strip() or line.startswith("DATE"):
+                            continue
+                        parts = line.split(",")
+                        if len(parts) >= 2:
+                            try:
+                                value_str = parts[1].strip()
+                                if value_str and value_str != ".." and value_str != ".":
+                                    rate = float(value_str)
+                                    cache.set(cache_key, rate)
+                                    logger.info(f"✅ BoE {series_code}: {rate}%")
+                                    return rate
+                            except (ValueError, IndexError):
+                                continue
+        except Exception as e:
+            logger.error(f"BoE error for {series_code}: {e}")
+        
+        return None
+    
+    async def get_sonia(self) -> Optional[float]:
+        """Get SONIA rate - try FRED first (more reliable), then BoE"""
+        # SONIA is also on FRED as IUDSOIA
+        if config.FRED_API_KEY:
+            rate = await fred_client.get_series_latest("IUDSOIA")
+            if rate is not None:
+                return rate
+        # Fallback to BoE direct
+        return await self.get_series("IUDSOIA")
+
+
+# Initialize clients
+bcb_client = BCBClient()
+fred_client = FREDClient()
+ecb_client = ECBClient()
+boe_client = BOEClient()
+
+
+class XCCYBasisClient:
+    """
+    Client to calculate cross-currency basis from FX forwards.
+    
+    The xccy basis is the deviation from Covered Interest Parity (CIP).
+    We calculate it by comparing:
+    - Implied foreign rate from FX forwards
+    - Actual foreign interbank rate
+    
+    Formula: Basis = Implied Rate - Actual Rate
+    
+    Where Implied Rate from forward points:
+    F = S × (1 + r_foreign × T) / (1 + r_domestic × T)
+    
+    For small rates: Forward Points ≈ (r_foreign - r_domestic) × S × T
+    So: Implied r_foreign ≈ r_domestic + (Forward Points / S / T)
+    """
+    
+    # Investing.com forward rate URL patterns (scraping these requires network)
+    FORWARD_URLS = {
+        'EUR': 'https://www.investing.com/currencies/eur-usd-forward-rates',
+        'GBP': 'https://www.investing.com/currencies/gbp-usd-forward-rates',
+        'JPY': 'https://www.investing.com/currencies/usd-jpy-forward-rates',
+        'CHF': 'https://www.investing.com/currencies/usd-chf-forward-rates',
+        'CAD': 'https://www.investing.com/currencies/usd-cad-forward-rates',
+        'AUD': 'https://www.investing.com/currencies/aud-usd-forward-rates',
+    }
+    
+    # Tenor mapping for forward contracts (in years)
+    TENOR_MAP = {
+        '1Y FWD': 1.0,
+        '2Y FWD': 2.0,
+        '3Y FWD': 3.0,
+        '5Y FWD': 5.0,
+        '10Y FWD': 10.0,
+    }
+    
+    async def get_forward_points(self, currency: str, tenor_years: float) -> Optional[dict]:
+        """
+        Scrape FX forward points from Investing.com
+        Returns forward points in pips and spot rate
+        """
+        if not HTTPX_AVAILABLE:
+            return None
+        
+        url = self.FORWARD_URLS.get(currency.upper())
+        if not url:
+            return None
+        
+        cache_key = f"fwd_{currency}_{tenor_years}"
+        cached = cache.get(cache_key)
+        if cached is not None:
+            return cached
+        
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                response = await client.get(
+                    url,
+                    headers={
+                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                        "Accept": "text/html,application/xhtml+xml"
+                    }
+                )
+                
+                if response.status_code == 200:
+                    # Parse HTML to extract forward points
+                    # This is simplified - real implementation would use BeautifulSoup
+                    text = response.text
+                    
+                    # Look for tenor-specific forward points
+                    # The page has rows like "EURUSD 5Y FWD" with bid/ask
+                    result = self._parse_forward_points(text, currency, tenor_years)
+                    if result:
+                        cache.set(cache_key, result)
+                        return result
+                        
+        except Exception as e:
+            logger.error(f"Forward points fetch error for {currency}: {e}")
+        
+        return None
+    
+    def _parse_forward_points(self, html: str, currency: str, tenor_years: float) -> Optional[dict]:
+        """Parse forward points from Investing.com HTML"""
+        import re
+        
+        # Map tenor to search pattern
+        tenor_patterns = {
+            1: r'1Y FWD.*?(\d+\.?\d*)',
+            2: r'2Y FWD.*?(\d+\.?\d*)',
+            3: r'3Y FWD.*?(\d+\.?\d*)',
+            5: r'5Y FWD.*?(\d+\.?\d*)',
+            10: r'10Y FWD.*?(\d+\.?\d*)',
+        }
+        
+        tenor_key = int(tenor_years) if tenor_years in [1, 2, 3, 5, 10] else 5
+        pattern = tenor_patterns.get(tenor_key)
+        
+        if pattern:
+            match = re.search(pattern, html, re.IGNORECASE | re.DOTALL)
+            if match:
+                try:
+                    forward_points = float(match.group(1))
+                    return {'forward_points_pips': forward_points, 'tenor': tenor_years}
+                except ValueError:
+                    pass
+        
+        return None
+    
+    async def calculate_xccy_basis(
+        self, 
+        currency: str, 
+        tenor_years: float,
+        usd_rate: Optional[float] = None,
+        foreign_rate: Optional[float] = None,
+        spot_rate: Optional[float] = None
+    ) -> Optional[dict]:
+        """
+        Calculate cross-currency basis from forward points.
+        
+        Basis = Forward Implied Foreign Rate - Actual Foreign Rate
+        
+        If forward points are unavailable, falls back to estimates.
+        """
+        currency = currency.upper()
+        
+        # Get USD rate (SOFR) if not provided
+        if usd_rate is None:
+            usd_rate = await fred_client.get_sofr()
+            if usd_rate is None:
+                usd_rate = 4.30  # Fallback
+        
+        # Try to get forward points
+        fwd_data = await self.get_forward_points(currency, tenor_years)
+        
+        if fwd_data and spot_rate:
+            # Calculate implied foreign rate from forward points
+            # Forward points are typically quoted in pips (0.0001 for most pairs)
+            fwd_points = fwd_data['forward_points_pips']
+            
+            # For EUR/USD, GBP/USD, AUD/USD: 1 pip = 0.0001
+            # For USD/JPY: 1 pip = 0.01
+            pip_value = 0.01 if currency == 'JPY' else 0.0001
+            
+            # Convert forward points to implied rate differential
+            # fwd_pts ≈ (r_foreign - r_usd) × spot × T × pip_adjustment
+            implied_rate_diff = (fwd_points * pip_value) / (spot_rate * tenor_years) * 100
+            implied_foreign_rate = usd_rate + implied_rate_diff
+            
+            # Get actual foreign rate
+            if foreign_rate is None:
+                foreign_rate = await self._get_foreign_rate(currency)
+            
+            if foreign_rate:
+                # Basis = Implied - Actual (in bps)
+                basis_bps = (implied_foreign_rate - foreign_rate) * 100
+                
+                return {
+                    'basis_bps': round(basis_bps, 1),
+                    'implied_rate': round(implied_foreign_rate, 4),
+                    'actual_rate': round(foreign_rate, 4),
+                    'forward_points': fwd_points,
+                    'source': 'Investing.com FX Forwards',
+                    'is_live': True,
+                    'currency': currency,
+                    'tenor': tenor_years
+                }
+        
+        # Fallback: return None to trigger static estimates
+        return None
+    
+    async def _get_foreign_rate(self, currency: str) -> Optional[float]:
+        """Get the benchmark interbank rate for a foreign currency"""
+        if currency == 'EUR':
+            return await ecb_client.get_euribor(12)
+        elif currency == 'GBP':
+            return await boe_client.get_sonia()
+        elif currency == 'JPY':
+            # TONAR from FRED
+            return await fred_client.get_series_latest("IRSTCI01JPM156N") or 0.1
+        elif currency == 'CHF':
+            return await fred_client.get_series_latest("IR3TIB01CHM156N") or 0.5
+        elif currency == 'CAD':
+            return await fred_client.get_series_latest("IRSTCI01CAM156N") or 3.0
+        elif currency == 'AUD':
+            return await fred_client.get_series_latest("IRSTCI01AUM156N") or 4.0
+        return None
+
+
+# Initialize xccy basis client
+xccy_basis_client = XCCYBasisClient()
+
+# ============================================================================
+# DATA FETCHING
+# ============================================================================
+
+async def get_live_indexers(currency: str) -> List[dict]:
+    """Get indexer values with live data"""
+    currency = currency.upper()
+    indexers = [{'key': 'none', 'label': 'No indexer', 'value': 0.0}]
+    
+    try:
+        if currency == 'BRL':
+            selic = await bcb_client.get_selic_target()
+            if selic is not None:
+                indexers.append({'key': 'selic', 'label': 'SELIC Target [Live]', 'value': round(selic, 2)})
+            else:
+                indexers.append(FALLBACK_INDEXERS['BRL'][1])
+            indexers.append(FALLBACK_INDEXERS['BRL'][2])  # IPCA fallback
+        
+        elif currency == 'USD':
+            fed_funds = await fred_client.get_fed_funds_rate()
+            sofr = await fred_client.get_sofr()
+            treasury_10y = await fred_client.get_treasury_yield(10)
+            
+            if fed_funds is not None:
+                indexers.append({'key': 'fed-funds', 'label': 'Fed Funds Rate [Live]', 'value': round(fed_funds, 2)})
+            else:
+                indexers.append(FALLBACK_INDEXERS['USD'][1])
+            
+            if sofr is not None:
+                indexers.append({'key': 'sofr', 'label': 'SOFR [Live]', 'value': round(sofr, 2)})
+            else:
+                indexers.append(FALLBACK_INDEXERS['USD'][2])
+            
+            if treasury_10y is not None:
+                indexers.append({'key': 'bond-10yr', 'label': '10Y Treasury [Live]', 'value': round(treasury_10y, 2)})
+            else:
+                indexers.append(FALLBACK_INDEXERS['USD'][3])
+        
+        elif currency == 'EUR':
+            euribor = await ecb_client.get_euribor(12)
+            if euribor is not None:
+                indexers.append({'key': 'euribor', 'label': 'EURIBOR 12M [Live]', 'value': round(euribor, 2)})
+            else:
+                indexers.append(FALLBACK_INDEXERS['EUR'][1])
+            indexers.append(FALLBACK_INDEXERS['EUR'][2])
+        
+        elif currency == 'GBP':
+            sonia = await boe_client.get_sonia()
+            if sonia is not None:
+                indexers.append({'key': 'gbp-sonia', 'label': 'SONIA [Live]', 'value': round(sonia, 2)})
+            else:
+                indexers.append(FALLBACK_INDEXERS['GBP'][1])
+        
+        elif currency == 'CHF':
+            # Swiss short-term rate from FRED (OECD data)
+            chf_short = await fred_client.get_series_latest("IRSTCI01CHM156N")
+            if chf_short is not None:
+                indexers.append({'key': 'saron', 'label': 'CHF Short Rate [Live]', 'value': round(chf_short, 2)})
+            else:
+                indexers.append(FALLBACK_INDEXERS['CHF'][1])
+            indexers.append(FALLBACK_INDEXERS['CHF'][2])
+        
+        elif currency == 'JPY':
+            # Japan policy rate from FRED
+            boj_rate = await fred_client.get_series_latest("IRSTCI01JPM156N")
+            if boj_rate is not None:
+                indexers.append({'key': 'tonar', 'label': 'Japan Short Rate [Live]', 'value': round(boj_rate, 2)})
+            else:
+                indexers.append(FALLBACK_INDEXERS['JPY'][1])
+            indexers.append(FALLBACK_INDEXERS['JPY'][2])
+        
+        elif currency == 'CNY':
+            # China rates - using fallback (PBOC doesn't have easy API)
+            indexers.append(FALLBACK_INDEXERS['CNY'][1])
+            indexers.append(FALLBACK_INDEXERS['CNY'][2])
+        
+        elif currency == 'CAD':
+            # Canada overnight rate from FRED
+            corra = await fred_client.get_series_latest("IRSTCI01CAM156N")
+            if corra is not None:
+                indexers.append({'key': 'corra', 'label': 'Canada Rate [Live]', 'value': round(corra, 2)})
+            else:
+                indexers.append(FALLBACK_INDEXERS['CAD'][1])
+            indexers.append(FALLBACK_INDEXERS['CAD'][2])
+        
+        elif currency == 'AUD':
+            # Australia RBA rate from FRED
+            rba_rate = await fred_client.get_series_latest("IRSTCI01AUM156N")
+            if rba_rate is not None:
+                indexers.append({'key': 'aonia', 'label': 'Australia Rate [Live]', 'value': round(rba_rate, 2)})
+            else:
+                indexers.append(FALLBACK_INDEXERS['AUD'][1])
+            indexers.append(FALLBACK_INDEXERS['AUD'][2])
+        
+        elif currency == 'ARS':
+            # Argentina rates - using fallback (no easy live API due to capital controls)
+            # BADLAR and BCRA policy rate
+            indexers.append(FALLBACK_INDEXERS['ARS'][1])
+            indexers.append(FALLBACK_INDEXERS['ARS'][2])
+        
+        else:
+            # Unknown currency - try fallback
+            fallback = FALLBACK_INDEXERS.get(currency, [])
+            if fallback:
+                return fallback
+            return indexers
+    
+    except Exception as e:
+        logger.error(f"Error getting indexers for {currency}: {e}")
+        return FALLBACK_INDEXERS.get(currency, [])
+    
+    return indexers
+
+
+def interpolate_fallback_rate(currency: str, tenor: float) -> Optional[float]:
+    """Linear interpolation from fallback curves"""
+    if currency not in FALLBACK_RISK_FREE:
+        return None
+    
+    rates = FALLBACK_RISK_FREE[currency]
+    
+    if tenor in rates:
+        return rates[tenor]
+    
+    keys = sorted(rates.keys())
+    
+    for i in range(len(keys) - 1):
+        t1, t2 = keys[i], keys[i + 1]
+        if t1 <= tenor <= t2:
+            r1, r2 = rates[t1], rates[t2]
+            return r1 + ((tenor - t1) / (t2 - t1)) * (r2 - r1)
+    
+    if tenor < keys[0]:
+        return rates[keys[0]]
+    return rates[keys[-1]]
+
+
+def interpolate_rate(curve: dict, tenor: float) -> Optional[float]:
+    """Linear interpolation from a rate curve dict {tenor: rate}"""
+    if not curve:
+        return None
+    
+    if tenor in curve:
+        return curve[tenor]
+    
+    keys = sorted(curve.keys())
+    
+    for i in range(len(keys) - 1):
+        t1, t2 = keys[i], keys[i + 1]
+        if t1 <= tenor <= t2:
+            r1, r2 = curve[t1], curve[t2]
+            return r1 + ((tenor - t1) / (t2 - t1)) * (r2 - r1)
+    
+    if tenor < keys[0]:
+        return curve[keys[0]]
+    return curve[keys[-1]]
+
+
+async def get_live_risk_free_curve_usd() -> Optional[dict]:
+    """Fetch live US Treasury curve from FRED"""
+    if not HTTPX_AVAILABLE or not config.FRED_API_KEY:
+        return None
+    
+    cache_key = "risk_free_curve_usd"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+    
+    try:
+        tenors = {1: "DGS1", 2: "DGS2", 3: "DGS3", 5: "DGS5", 7: "DGS7", 10: "DGS10"}
+        curve = {}
+        
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            for years, series_id in tenors.items():
+                response = await client.get(
+                    f"{config.FRED_BASE_URL}/series/observations",
+                    params={
+                        "series_id": series_id,
+                        "api_key": config.FRED_API_KEY,
+                        "file_type": "json",
+                        "sort_order": "desc",
+                        "limit": 5
+                    }
+                )
+                if response.status_code == 200:
+                    data = response.json()
+                    for obs in data.get("observations", []):
+                        value = obs.get("value")
+                        if value and value != ".":
+                            curve[years] = float(value)
+                            break
+        
+        if len(curve) >= 3:
+            cache.set(cache_key, curve)
+            logger.info(f"✅ FRED Treasury curve: {curve}")
+            return curve
+    except Exception as e:
+        logger.error(f"FRED curve error: {e}")
+    
+    return None
+
+
+async def get_live_risk_free_curve_brl() -> Optional[dict]:
+    """Fetch live Brazilian DI curve from BCB"""
+    if not HTTPX_AVAILABLE:
+        return None
+    
+    cache_key = "risk_free_curve_brl"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+    
+    try:
+        # BCB series for swap rates (DI x Pre)
+        # Using SELIC target as short-term proxy and building curve
+        selic = await bcb_client.get_selic_target()
+        if selic:
+            # Approximate curve based on SELIC with typical term premium
+            curve = {
+                1: selic,
+                2: selic - 0.2,
+                3: selic - 0.4,
+                5: selic - 0.8,
+                10: selic - 1.5
+            }
+            cache.set(cache_key, curve)
+            logger.info(f"✅ BCB BRL curve (SELIC-based): {curve}")
+            return curve
+    except Exception as e:
+        logger.error(f"BCB curve error: {e}")
+    
+    return None
+
+
+async def get_live_risk_free_curve_eur() -> Optional[dict]:
+    """Fetch live EUR curve from ECB"""
+    if not HTTPX_AVAILABLE:
+        return None
+    
+    cache_key = "risk_free_curve_eur"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+    
+    try:
+        # Use EURIBOR 12M as base and estimate curve
+        euribor = await ecb_client.get_euribor(12)
+        if euribor:
+            # Approximate EUR curve
+            curve = {
+                1: euribor,
+                2: euribor - 0.1,
+                3: euribor - 0.15,
+                5: euribor - 0.2,
+                10: euribor
+            }
+            cache.set(cache_key, curve)
+            logger.info(f"✅ ECB EUR curve (EURIBOR-based): {curve}")
+            return curve
+    except Exception as e:
+        logger.error(f"ECB curve error: {e}")
+    
+    return None
+
+
+async def get_live_risk_free_curve_gbp() -> Optional[dict]:
+    """Fetch live GBP curve - use FRED for gilt yields"""
+    if not HTTPX_AVAILABLE:
+        return None
+    
+    cache_key = "risk_free_curve_gbp"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+    
+    try:
+        curve = {}
+        
+        # Get SONIA for short end
+        sonia = await boe_client.get_sonia()
+        if sonia:
+            curve[1] = sonia
+        
+        # Get Gilt yields from FRED (Bank of England data mirrored on FRED)
+        # FRED series: IRLTLT01GBM156N (10Y), etc.
+        gilt_10y = await fred_client.get_series_latest("IRLTLT01GBM156N")
+        if gilt_10y:
+            curve[10] = gilt_10y
+        
+        # Try BoE direct for more tenors
+        tenors_boe = {
+            5: "IUDMNPY",   # 5Y nominal par yield
+            20: "IUDLNPY"   # 20Y nominal par yield
+        }
+        
+        for years, series_code in tenors_boe.items():
+            rate = await boe_client.get_series(series_code)
+            if rate is not None:
+                curve[years] = rate
+        
+        if len(curve) >= 2:
+            # Interpolate missing points
+            if 1 in curve and 10 in curve and 5 not in curve:
+                curve[5] = (curve[1] + curve[10]) / 2
+            if 1 in curve and 5 in curve and 2 not in curve:
+                curve[2] = curve[1] + (curve[5] - curve[1]) * 0.25
+            
+            cache.set(cache_key, curve)
+            logger.info(f"✅ GBP curve: {curve}")
+            return curve
+    except Exception as e:
+        logger.error(f"GBP curve error: {e}")
+    
+    return None
+
+
+async def get_live_risk_free_curve_chf() -> Optional[dict]:
+    """Fetch live CHF curve from FRED (OECD data)"""
+    if not HTTPX_AVAILABLE or not config.FRED_API_KEY:
+        return None
+    
+    cache_key = "risk_free_curve_chf"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+    
+    try:
+        curve = {}
+        # Swiss rates from FRED (OECD data)
+        chf_short = await fred_client.get_series_latest("IRSTCI01CHM156N")  # Overnight/call rate
+        chf_3m = await fred_client.get_series_latest("IR3TIB01CHM156N")     # 3-month interbank
+        chf_10y = await fred_client.get_series_latest("IRLTLT01CHM156N")    # 10Y govt bond
+        
+        if chf_short is not None:
+            curve[1] = chf_short
+        if chf_3m is not None:
+            curve[0.25] = chf_3m  # 3 months
+        if chf_10y is not None:
+            curve[10] = chf_10y
+        
+        if len(curve) >= 2:
+            # Interpolate missing points
+            if 1 in curve and 10 in curve:
+                curve[2] = curve[1] + (curve[10] - curve[1]) * 0.1
+                curve[5] = curve[1] + (curve[10] - curve[1]) * 0.4
+            cache.set(cache_key, curve)
+            logger.info(f"✅ CHF curve: {curve}")
+            return curve
+    except Exception as e:
+        logger.error(f"CHF curve error: {e}")
+    
+    return None
+
+
+async def get_live_risk_free_curve_jpy() -> Optional[dict]:
+    """Fetch live JPY curve from FRED"""
+    if not HTTPX_AVAILABLE or not config.FRED_API_KEY:
+        return None
+    
+    cache_key = "risk_free_curve_jpy"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+    
+    try:
+        curve = {}
+        # Japan government bond yields from FRED
+        jpy_10y = await fred_client.get_series_latest("IRLTLT01JPM156N")
+        jpy_short = await fred_client.get_series_latest("IRSTCI01JPM156N")
+        
+        if jpy_short:
+            curve[1] = jpy_short
+        if jpy_10y:
+            curve[10] = jpy_10y
+        
+        if len(curve) >= 1:
+            if 1 in curve and 10 in curve:
+                curve[2] = curve[1] + (curve[10] - curve[1]) * 0.1
+                curve[5] = curve[1] + (curve[10] - curve[1]) * 0.4
+            cache.set(cache_key, curve)
+            logger.info(f"✅ JPY curve: {curve}")
+            return curve
+    except Exception as e:
+        logger.error(f"JPY curve error: {e}")
+    
+    return None
+
+
+async def get_live_risk_free_curve_cad() -> Optional[dict]:
+    """Fetch live CAD curve from FRED"""
+    if not HTTPX_AVAILABLE or not config.FRED_API_KEY:
+        return None
+    
+    cache_key = "risk_free_curve_cad"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+    
+    try:
+        curve = {}
+        # Canada government bond yields from FRED
+        cad_10y = await fred_client.get_series_latest("IRLTLT01CAM156N")
+        cad_short = await fred_client.get_series_latest("IRSTCI01CAM156N")
+        
+        if cad_short:
+            curve[1] = cad_short
+        if cad_10y:
+            curve[10] = cad_10y
+        
+        if len(curve) >= 1:
+            if 1 in curve and 10 in curve:
+                curve[2] = curve[1] + (curve[10] - curve[1]) * 0.1
+                curve[5] = curve[1] + (curve[10] - curve[1]) * 0.4
+            cache.set(cache_key, curve)
+            logger.info(f"✅ CAD curve: {curve}")
+            return curve
+    except Exception as e:
+        logger.error(f"CAD curve error: {e}")
+    
+    return None
+
+
+async def get_live_risk_free_curve_aud() -> Optional[dict]:
+    """Fetch live AUD curve from FRED"""
+    if not HTTPX_AVAILABLE or not config.FRED_API_KEY:
+        return None
+    
+    cache_key = "risk_free_curve_aud"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+    
+    try:
+        curve = {}
+        # Australia government bond yields from FRED
+        aud_10y = await fred_client.get_series_latest("IRLTLT01AUM156N")
+        aud_short = await fred_client.get_series_latest("IRSTCI01AUM156N")
+        
+        if aud_short:
+            curve[1] = aud_short
+        if aud_10y:
+            curve[10] = aud_10y
+        
+        if len(curve) >= 1:
+            if 1 in curve and 10 in curve:
+                curve[2] = curve[1] + (curve[10] - curve[1]) * 0.1
+                curve[5] = curve[1] + (curve[10] - curve[1]) * 0.4
+            cache.set(cache_key, curve)
+            logger.info(f"✅ AUD curve: {curve}")
+            return curve
+    except Exception as e:
+        logger.error(f"AUD curve error: {e}")
+    
+    return None
+
+
+async def get_risk_free_rate(currency: str, tenor: float) -> tuple[Optional[float], str]:
+    """Get risk-free rate with live data, falling back to reference curves"""
+    currency = currency.upper()
+    
+    # Try to get live curve first
+    live_curve = None
+    source = "Reference Curve"
+    
+    try:
+        if currency == "USD":
+            live_curve = await get_live_risk_free_curve_usd()
+        elif currency == "BRL":
+            live_curve = await get_live_risk_free_curve_brl()
+        elif currency == "EUR":
+            live_curve = await get_live_risk_free_curve_eur()
+        elif currency == "GBP":
+            live_curve = await get_live_risk_free_curve_gbp()
+        elif currency == "CHF":
+            live_curve = await get_live_risk_free_curve_chf()
+        elif currency == "JPY":
+            live_curve = await get_live_risk_free_curve_jpy()
+        elif currency == "CAD":
+            live_curve = await get_live_risk_free_curve_cad()
+        elif currency == "AUD":
+            live_curve = await get_live_risk_free_curve_aud()
+        # CNY uses fallback only (no easy public API)
+        
+        if live_curve:
+            rate = interpolate_rate(live_curve, tenor)
+            if rate is not None:
+                return round(rate, 4), "Live"
+    except Exception as e:
+        logger.error(f"Live curve fetch failed for {currency}: {e}")
+    
+    # Fallback to reference data
+    rate = interpolate_fallback_rate(currency, tenor)
+    if rate is not None:
+        return round(rate, 4), source
+    
+    return None, "Not Available"
+
+# ============================================================================
+# HEDGING COST FUNCTIONS
+# ============================================================================
+
+def interpolate_xccy_basis(currency: str, tenor: float) -> Optional[float]:
+    """
+    Interpolate cross-currency basis for a currency vs USD at given tenor.
+    Returns basis in bps. 
+    
+    SIGN CONVENTION (for USD → CCY direction):
+    - POSITIVE = USD investor benefits when going to this currency
+    - NEGATIVE = USD investor pays when going to this currency
+    """
+    currency = currency.upper()
+    if currency not in XCCY_BASIS_VS_USD:
+        return None
+    
+    curve = XCCY_BASIS_VS_USD[currency]
+    tenors = sorted(curve.keys())
+    
+    if tenor <= tenors[0]:
+        return curve[tenors[0]]
+    if tenor >= tenors[-1]:
+        return curve[tenors[-1]]
+    
+    for i in range(len(tenors) - 1):
+        t1, t2 = tenors[i], tenors[i + 1]
+        if t1 <= tenor <= t2:
+            r1, r2 = curve[t1], curve[t2]
+            return r1 + (r2 - r1) * (tenor - t1) / (t2 - t1)
+    
+    return None
+
+
+# Aliases for backwards compatibility
+def interpolate_implied_usd_rate(currency: str, tenor: float) -> Optional[float]:
+    """DEPRECATED: Use interpolate_xccy_basis"""
+    return interpolate_xccy_basis(currency, tenor)
+
+
+def interpolate_local_rate(currency: str, tenor: float) -> Optional[float]:
+    """DEPRECATED"""
+    return None
+
+
+def interpolate_hedging_cost(currency: str, tenor: float) -> Optional[float]:
+    """DEPRECATED: Use interpolate_xccy_basis"""
+    return interpolate_xccy_basis(currency, tenor)
+
+
+
+
+async def get_hedging_cost_async(base_currency: str, target_currency: str, tenor: float) -> dict:
+    """
+    Calculate hedging cost between two currencies.
+    
+    IMPORTANT: Hedge cost ≠ Interest rate differential!
+    
+    The hedge cost is the DEVIATION from Covered Interest Parity (CIP), 
+    known as the cross-currency basis. In a perfect CIP world, hedging 
+    has zero cost because the forward rate already embeds rate differentials.
+    
+    Data sources (in order of preference):
+    1. BRL: Live B3 Cupom Cambial + SOFR
+    2. G10: Live FX forward scraping from Investing.com (calculates basis)
+    3. Fallback: Static reference estimates
+    
+    Returns cost in bps. Positive = benefit, Negative = cost.
+    """
+    base = base_currency.upper()
+    target = target_currency.upper()
+    
+    # Same currency = no cost
+    if base == target:
+        return {
+            "cost_bps": 0,
+            "source": "N/A",
+            "is_live": False,
+            "instrument": "None",
+            "notes": "Same currency pair",
+            "data_quality": "N/A"
+        }
+    
+    # Special handling for BRL - use live B3 + FRED data
+    # Cupom Cambial is the IMPLIED USD rate in Brazil (derived from FX forwards)
+    # Formula: Hedge Cost = Base_Implied - Target_Implied
+    if (base == 'USD' and target == 'BRL') or (base == 'BRL' and target == 'USD'):
+        try:
+            b3_client = B3Client()
+            
+            # Get Cupom Cambial from B3 (IMPLIED USD rate in BRL market)
+            cupom_cambial = await b3_client.get_cupom_cambial_for_tenor(tenor)
+            
+            # Get SOFR from FRED (IMPLIED USD rate for USD, which IS the USD rate)
+            sofr = await fred_client.get_sofr()
+            
+            if cupom_cambial is not None and sofr is not None:
+                # BRL implied rate = Cupom Cambial
+                # USD implied rate = SOFR
+                
+                if base == 'USD':
+                    # USD → BRL: Cost = USD_implied - BRL_implied = SOFR - Cupom
+                    hedge_cost_bps = (sofr - cupom_cambial) * 100
+                else:
+                    # BRL → USD: Cost = BRL_implied - USD_implied = Cupom - SOFR
+                    hedge_cost_bps = (cupom_cambial - sofr) * 100
+                
+                return {
+                    "cost_bps": round(hedge_cost_bps, 1),
+                    "source": "B3 + FRED",
+                    "is_live": True,
+                    "instrument": "DDI Futures / FRC (Cupom Cambial)",
+                    "notes": f"Live: Cupom Cambial ({cupom_cambial:.2f}%), SOFR ({sofr:.2f}%)",
+                    "base_implied_rate": round(cupom_cambial if base == 'BRL' else sofr, 4),
+                    "target_implied_rate": round(sofr if base == 'BRL' else cupom_cambial, 4),
+                    "cupom_cambial": round(cupom_cambial, 4),
+                    "sofr": round(sofr, 4),
+                    "calculation": f"({cupom_cambial if base == 'BRL' else sofr:.2f} - {sofr if base == 'BRL' else cupom_cambial:.2f}) × 100 = {hedge_cost_bps:.1f} bps",
+                    "base_currency": base,
+                    "target_currency": target,
+                    "tenor": tenor,
+                    "data_quality": "live",
+                    "methodology": get_methodology_for_pair(base, target)
+                }
+        except Exception as e:
+            logger.error(f"Live BRL hedging cost fetch failed: {e}")
+    
+    # For G10 currencies, try to calculate basis from FX forwards
+    g10_currencies = ['EUR', 'GBP', 'JPY', 'CHF', 'CAD', 'AUD']
+    target_ccy = target if base == 'USD' else base
+    
+    if target_ccy in g10_currencies and (base == 'USD' or target == 'USD'):
+        try:
+            # Try to get live xccy basis from forward scraping
+            basis_data = await xccy_basis_client.calculate_xccy_basis(
+                currency=target_ccy,
+                tenor_years=tenor
+            )
+            
+            if basis_data and basis_data.get('is_live'):
+                basis_bps = basis_data['basis_bps']
+                
+                # Direction adjustment: if going from USD to foreign, use as-is
+                # If going from foreign to USD, flip sign
+                if base != 'USD':
+                    basis_bps = -basis_bps
+                
+                return {
+                    "cost_bps": round(basis_bps, 1),
+                    "source": basis_data['source'],
+                    "is_live": True,
+                    "instrument": "FX Forward Implied Basis",
+                    "notes": f"Implied {target_ccy} rate: {basis_data['implied_rate']:.2f}%, Actual: {basis_data['actual_rate']:.2f}%",
+                    "implied_rate": basis_data['implied_rate'],
+                    "actual_rate": basis_data['actual_rate'],
+                    "forward_points": basis_data.get('forward_points'),
+                    "calculation": f"({basis_data['implied_rate']:.2f} - {basis_data['actual_rate']:.2f}) × 100 = {basis_bps:.1f} bps",
+                    "base_currency": base,
+                    "target_currency": target,
+                    "tenor": tenor,
+                    "data_quality": "live"
+                }
+        except Exception as e:
+            logger.warning(f"FX forward basis calculation failed for {target_ccy}: {e}")
+    
+    # Fallback to static estimates for all currencies
+    return get_hedging_cost_sync(base_currency, target_currency, tenor)
+
+
+def get_hedging_cost_sync(base_currency: str, target_currency: str, tenor: float) -> dict:
+    """
+    Calculate hedging cost between two currencies using cross-currency basis.
+    
+    IMPORTANT: This is the XCCY BASIS - the deviation from CIP, NOT the full
+    interest rate differential! The interest rate differential is already
+    captured in the CIP conversion formula.
+    
+    TYPICAL RANGES:
+    - G10 currencies: -10 to -50 bps (small)
+    - BRL (Cupom - SOFR): +15 to +45 bps (small convertibility premium)
+    - ARS: 0 (manual entry recommended - NDF market is complex)
+    
+    SIGN CONVENTION (for USD → CCY):
+    - POSITIVE = benefit (actual forward better than CIP-implied)
+    - NEGATIVE = cost (actual forward worse than CIP-implied)
+    """
+    base = base_currency.upper()
+    target = target_currency.upper()
+    
+    # Same currency = no cost
+    if base == target:
+        return {
+            "cost_bps": 0,
+            "source": "N/A",
+            "is_live": False,
+            "instrument": "None",
+            "notes": "Same currency pair",
+            "data_quality": "N/A",
+            "requires_manual": False
+        }
+    
+    # Check if this pair requires manual entry (e.g., ARS)
+    requires_manual = base in MANUAL_HEDGE_CURRENCIES or target in MANUAL_HEDGE_CURRENCIES
+    
+    # Get xccy basis for both currencies vs USD
+    base_basis = interpolate_xccy_basis(base, tenor) or 0
+    target_basis = interpolate_xccy_basis(target, tenor) or 0
+    
+    # Calculate hedge cost
+    # For USD → CCY: cost = target_basis (directly use the basis)
+    # For CCY → USD: cost = -base_basis (flip sign)
+    # For CCY1 → CCY2 (cross): cost = target_basis - base_basis
+    
+    if base == 'USD':
+        cost_bps = target_basis
+    elif target == 'USD':
+        cost_bps = -base_basis
+    else:
+        cost_bps = target_basis - base_basis
+    
+    # Determine instrument type and notes
+    if base == 'ARS' or target == 'ARS':
+        instrument = "Non-Deliverable Forward (NDF)"
+        notes = "Capital controls - manual entry recommended"
+        cost_bps = 0  # Force to 0 for ARS, user must override
+    elif base == 'BRL' or target == 'BRL':
+        instrument = "DDI Futures / FRC (Cupom Cambial)"
+        notes = f"Small convertibility premium"
+    elif base == 'CNY' or target == 'CNY':
+        instrument = "Non-Deliverable Forward (NDF)"
+        notes = f"Restricted currency - small NDF basis"
+    else:
+        instrument = "Cross-Currency Basis Swap"
+        notes = f"G10 xccy basis"
+    
+    # Data quality
+    base_quality = HEDGING_COST_DATA_QUALITY.get(base, 'estimate')
+    target_quality = HEDGING_COST_DATA_QUALITY.get(target, 'estimate')
+    data_quality = 'estimate' if 'estimate' in [base_quality, target_quality] else 'live_or_estimate'
+    
+    return {
+        "cost_bps": round(cost_bps, 1),
+        "source": "Reference estimate",
+        "is_live": False,
+        "instrument": instrument,
+        "notes": notes,
+        "base_currency": base,
+        "target_currency": target,
+        "tenor": tenor,
+        "data_quality": data_quality,
+        "base_basis_bps": base_basis,
+        "target_basis_bps": target_basis,
+        "requires_manual": requires_manual,
+        "methodology": get_methodology_for_pair(base, target)
+    }
+
+
+def get_methodology_for_pair(base: str, target: str) -> str:
+    """Return methodology explanation for a currency pair"""
+    
+    if base == 'BRL' or target == 'BRL':
+        return """CUPOM CAMBIAL METHOD (Brazil)
+        
+The Cupom Cambial is the implied USD interest rate embedded in Brazilian 
+FX forwards and futures (DDI/FRC contracts at B3).
+
+It represents what you'd earn on USD hedged within Brazil's onshore market.
+The formula is: Hedge Cost = Cupom Cambial - SOFR
+
+If Cupom Cambial > SOFR: USD→BRL gives you POSITIVE carry
+If Cupom Cambial < SOFR: USD→BRL costs you (NEGATIVE carry)
+
+Live data source: B3 (Brasil, Bolsa, Balcão)"""
+    
+    elif base == 'ARS' or target == 'ARS':
+        return """NDF IMPLIED RATE METHOD (Argentina)
+
+Argentina has capital controls, so the ARS/USD forward is a Non-Deliverable 
+Forward (NDF) traded offshore. The NDF rate prices in expected peso devaluation.
+
+The implied USD rate in ARS is VERY HIGH (30-50%+) because the market expects 
+significant peso depreciation. This creates:
+
+- ARS → Strong CCY: POSITIVE carry (you receive the devaluation premium)
+- Strong CCY → ARS: NEGATIVE carry (you pay the devaluation premium)
+
+Note: These are ESTIMATES. Actual NDF rates fluctuate significantly."""
+    
+    elif base == 'CNY' or target == 'CNY':
+        return """NDF IMPLIED RATE METHOD (China)
+
+The CNY is a restricted currency with managed float. Offshore CNY (CNH) and 
+onshore CNY can differ. NDF rates reflect market expectations of depreciation.
+
+The implied USD rate is typically higher than onshore rates, reflecting 
+a modest depreciation premium.
+
+Note: These are ESTIMATES based on typical NDF spreads."""
+    
+    else:
+        return """CROSS-CURRENCY BASIS METHOD (G10)
+
+For freely tradeable G10 currencies, the hedge cost is the cross-currency 
+basis swap spread - the deviation from Covered Interest Parity (CIP).
+
+In theory, CIP should hold and hedging should be costless. In practice, 
+there's a persistent "xccy basis" of typically -10 to -50 bps for most 
+G10 currencies vs USD.
+
+This basis reflects:
+- USD funding scarcity
+- Bank balance sheet constraints  
+- Regulatory capital requirements
+
+Note: Live xccy basis data requires paid market data terminals."""
+
+
+# Keep sync version for non-async contexts
+def get_hedging_cost(base_currency: str, target_currency: str, tenor: float) -> dict:
+    """Synchronous wrapper - use get_hedging_cost_async in async contexts"""
+    return get_hedging_cost_sync(base_currency, target_currency, tenor)
+
+
+# ============================================================================
+# API ENDPOINTS
+# ============================================================================
+
+@app.get("/api/", tags=["Info"])
+def root():
+    return {
+        "service": "Hedged Return Converter API",
+        "version": "2.1.0",
+        "status": "✅ Running",
+        "data_sources": {
+            "BRL": "BCB (Banco Central) - FREE",
+            "USD": "FRED (St. Louis Fed)",
+            "EUR": "ECB Data Portal",
+            "GBP": "Bank of England"
         }
     }
-    </script>
-    
-    <!-- Fonts -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <style>
-        *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-        
-        :root {
-            --bg-primary: #0a0a0b;
-            --bg-secondary: #111113;
-            --bg-tertiary: #18181b;
-            --bg-card: #1a1a1d;
-            --bg-input: #242428;
-            --border: #2a2a2e;
-            --border-light: #3a3a3e;
-            --text-primary: #fafafa;
-            --text-secondary: #a1a1aa;
-            --text-muted: #71717a;
-            --green: #22c55e;
-            --green-dim: #16a34a;
-            --green-light: #4ade80;
-            --green-glow: rgba(34, 197, 94, 0.15);
-            --green-subtle: rgba(34, 197, 94, 0.08);
-            --teal: #14b8a6;
-            --emerald: #10b981;
-            --red: #ef4444;
-            --yellow: #eab308;
-            --blue: #3b82f6;
-            --cyan: #06b6d4;
-        }
-        
-        body {
-            font-family: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
-            background: var(--bg-primary);
-            min-height: 100vh;
-            color: var(--text-primary);
-            line-height: 1.5;
-        }
-        
-        body::before {
-            content: '';
-            position: fixed;
-            top: 0; left: 0; right: 0; bottom: 0;
-            background-image: 
-                linear-gradient(rgba(34, 197, 94, 0.03) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(34, 197, 94, 0.03) 1px, transparent 1px);
-            background-size: 50px 50px;
-            pointer-events: none;
-            z-index: 0;
-        }
-        
-        .app {
-            position: relative;
-            z-index: 1;
-            max-width: 1000px;
-            margin: 0 auto;
-            padding: 24px 20px;
-            min-height: 100vh;
-        }
-        
-        /* Header */
-        .header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 20px 0 32px;
-            border-bottom: 1px solid var(--border);
-            margin-bottom: 32px;
-        }
-        
-        .brand {
-            display: flex;
-            align-items: center;
-            gap: 14px;
-        }
-        
-        .logo {
-            width: 42px;
-            height: 42px;
-            background: linear-gradient(135deg, var(--green) 0%, var(--cyan) 100%);
-            border-radius: 10px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 18px;
-            font-weight: 700;
-            color: var(--bg-primary);
-            font-family: 'JetBrains Mono', monospace;
-        }
-        
-        .brand-text h1 {
-            font-size: 1.4rem;
-            font-weight: 600;
-            letter-spacing: -0.02em;
-        }
-        
-        .brand-text .tagline {
-            font-size: 0.8rem;
-            color: var(--text-muted);
-            font-weight: 400;
-            margin-top: 2px;
-        }
-        
-        .live-indicators {
-            display: flex;
-            gap: 8px;
-        }
-        
-        .live-dot {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            padding: 6px 12px;
-            background: var(--bg-tertiary);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            font-size: 0.75rem;
-            font-family: 'JetBrains Mono', monospace;
-            color: var(--text-secondary);
-        }
-        
-        .live-dot .dot {
-            width: 6px;
-            height: 6px;
-            border-radius: 50%;
-            background: var(--text-muted);
-        }
-        
-        .live-dot .dot.active {
-            background: var(--green);
-            box-shadow: 0 0 10px var(--green);
-            animation: pulse 2s ease-in-out infinite;
-        }
-        
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
-        }
-        
-        /* Main Grid */
-        .main-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 24px;
-        }
-        
-        /* Cards */
-        .card {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 16px;
-            overflow: hidden;
-        }
-        
-        .card-header {
-            padding: 18px 22px;
-            border-bottom: 1px solid var(--border);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        
-        .card-title {
-            font-size: 0.85rem;
-            font-weight: 500;
-            color: var(--text-secondary);
-            text-transform: uppercase;
-            letter-spacing: 0.08em;
-        }
-        
-        .card-badge {
-            font-size: 0.65rem;
-            padding: 4px 8px;
-            background: var(--green-subtle);
-            color: var(--green);
-            border-radius: 4px;
-            font-family: 'JetBrains Mono', monospace;
-            font-weight: 500;
-        }
-        
-        /* Add Button */
-        .btn-add {
-            width: 28px;
-            height: 28px;
-            border-radius: 8px;
-            border: 1px solid var(--green);
-            background: transparent;
-            color: var(--green);
-            font-size: 1.2rem;
-            font-weight: 500;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.2s ease;
-        }
-        
-        .btn-add:hover {
-            background: var(--green);
-            color: var(--bg-primary);
-            transform: scale(1.05);
-        }
-        
-        /* Multiple Targets */
-        .target-row {
-            padding-bottom: 16px;
-            margin-bottom: 16px;
-            border-bottom: 1px solid var(--border);
-            position: relative;
-        }
-        
-        .target-row:last-child {
-            border-bottom: none;
-            margin-bottom: 0;
-            padding-bottom: 0;
-        }
-        
-        .target-row .target-label {
-            position: absolute;
-            top: 0;
-            right: 0;
-            font-size: 0.65rem;
-            color: var(--text-muted);
-            font-family: 'JetBrains Mono', monospace;
-        }
-        
-        .input-with-remove {
-            display: flex;
-            gap: 8px;
-            align-items: center;
-        }
-        
-        .input-with-remove .form-select {
-            flex: 1;
-        }
-        
-        .btn-remove {
-            width: 32px;
-            height: 32px;
-            border-radius: 8px;
-            border: 1px solid var(--red);
-            background: transparent;
-            color: var(--red);
-            font-size: 1rem;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.2s ease;
-            flex-shrink: 0;
-        }
-        
-        .btn-remove:hover {
-            background: var(--red);
-            color: white;
-        }
-        
-        /* Chart Controls */
-        .chart-controls {
-            display: flex;
-            gap: 8px;
-            align-items: center;
-        }
-        
-        .btn-add-curve {
-            padding: 6px 12px;
-            border-radius: 6px;
-            border: 1px solid var(--green);
-            background: transparent;
-            color: var(--green);
-            font-size: 0.75rem;
-            font-weight: 500;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            font-family: 'Outfit', sans-serif;
-        }
-        
-        .btn-add-curve:hover {
-            background: var(--green);
-            color: var(--bg-primary);
-        }
-        
-        .additional-curves-container {
-            margin-bottom: 12px;
-            padding: 12px;
-            background: var(--bg-tertiary);
-            border-radius: 8px;
-            border: 1px solid var(--border);
-        }
-        
-        .additional-curves-row {
-            display: flex;
-            gap: 8px;
-            align-items: center;
-        }
-        
-        .form-select-sm {
-            padding: 8px 12px;
-            font-size: 0.85rem;
-            flex: 1;
-        }
-        
-        .btn-add-sm, .btn-cancel-sm {
-            padding: 8px 14px;
-            border-radius: 6px;
-            font-size: 0.8rem;
-            font-weight: 500;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            border: none;
-        }
-        
-        .btn-add-sm {
-            background: var(--green);
-            color: var(--bg-primary);
-        }
-        
-        .btn-add-sm:hover {
-            background: var(--green-light);
-        }
-        
-        .btn-cancel-sm {
-            background: var(--bg-input);
-            color: var(--text-secondary);
-            border: 1px solid var(--border);
-        }
-        
-        .btn-cancel-sm:hover {
-            background: var(--border);
-        }
-        
-        /* Dynamic Legend */
-        .chart-legend {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 12px;
-            margin-bottom: 12px;
-        }
-        
-        .legend-item {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            font-size: 0.75rem;
-            color: var(--text-muted);
-            padding: 4px 8px;
-            background: var(--bg-tertiary);
-            border-radius: 4px;
-        }
-        
-        .legend-item.removable {
-            cursor: pointer;
-            transition: all 0.2s ease;
-        }
-        
-        .legend-item.removable:hover {
-            background: rgba(239, 68, 68, 0.2);
-        }
-        
-        .legend-item.removable::after {
-            content: '✕';
-            font-size: 0.65rem;
-            color: var(--text-muted);
-            margin-left: 4px;
-            opacity: 0;
-            transition: opacity 0.2s ease;
-        }
-        
-        .legend-item.removable:hover::after {
-            opacity: 1;
-            color: var(--red);
-        }
-        
-        .legend-dot {
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-        }
-        
-        .card-body {
-            padding: 22px;
-        }
-        
-        /* Form Elements */
-        .form-row { margin-bottom: 20px; }
-        .form-row:last-child { margin-bottom: 0; }
-        
-        .form-label {
-            display: block;
-            font-size: 0.8rem;
-            color: var(--text-muted);
-            margin-bottom: 8px;
-            font-weight: 400;
-        }
-        
-        .form-input, .form-select {
-            width: 100%;
-            padding: 14px 16px;
-            background: var(--bg-input);
-            border: 1px solid var(--border);
-            border-radius: 10px;
-            color: var(--text-primary);
-            font-size: 0.95rem;
-            font-family: 'Outfit', sans-serif;
-            transition: all 0.2s ease;
-        }
-        
-        /* Number input spinner styling */
-        .form-input[type="number"] {
-            -moz-appearance: textfield;
-        }
-        
-        .form-input[type="number"]::-webkit-outer-spin-button,
-        .form-input[type="number"]::-webkit-inner-spin-button {
-            -webkit-appearance: none;
-            margin: 0;
-            background: transparent;
-        }
-        
-        /* Custom number input with buttons */
-        .input-with-unit {
-            position: relative;
-        }
-        
-        .input-with-unit .form-input[type="number"] {
-            padding-right: 60px;
-            -moz-appearance: textfield;
-        }
-        
-        .form-select {
-            cursor: pointer;
-            appearance: none;
-            -webkit-appearance: none;
-            -moz-appearance: none;
-            padding-right: 44px;
-        }
-        
-        /* Firefox fix for dropdown */
-        .form-select::-ms-expand {
-            display: none;
-        }
-        
-        /* Dropdown arrow wrapper */
-        .select-wrapper {
-            position: relative;
-            display: block;
-        }
-        
-        .select-wrapper::after {
-            content: '';
-            position: absolute;
-            right: 16px;
-            top: 50%;
-            transform: translateY(-50%);
-            width: 0;
-            height: 0;
-            border-left: 5px solid transparent;
-            border-right: 5px solid transparent;
-            border-top: 6px solid var(--text-muted);
-            pointer-events: none;
-        }
-        
-        .select-wrapper-sm::after {
-            right: 12px;
-            border-left: 4px solid transparent;
-            border-right: 4px solid transparent;
-            border-top: 5px solid var(--text-muted);
-        }
-        
-        /* For selects inside input-with-remove */
-        .input-with-remove {
-            position: relative;
-            display: flex;
-            gap: 8px;
-        }
-        
-        .input-with-remove .select-wrapper {
-            flex: 1;
-        }
-        
-        .input-with-remove .select-wrapper::after {
-            right: 16px;
-        }
-        
-        .form-input:focus, .form-select:focus {
-            outline: none;
-            border-color: var(--green);
-            box-shadow: 0 0 0 3px var(--green-glow);
-        }
-        
-        option {
-            background: var(--bg-secondary);
-            color: var(--text-primary);
-        }
-        
-        .input-unit {
-            position: absolute;
-            right: 16px;
-            top: 50%;
-            transform: translateY(-50%);
-            color: var(--text-muted);
-            font-size: 0.85rem;
-            font-family: 'JetBrains Mono', monospace;
-        }
-        
-        /* Toggle Switch */
-        .toggle-row {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 12px 0;
-            border-top: 1px solid var(--border);
-            margin-top: 16px;
-        }
-        
-        .toggle-label {
-            display: flex;
-            flex-direction: column;
-            gap: 2px;
-        }
-        
-        .toggle-title {
-            font-size: 0.9rem;
-            color: var(--text-primary);
-            font-weight: 500;
-        }
-        
-        .toggle-subtitle {
-            font-size: 0.75rem;
-            color: var(--text-muted);
-        }
-        
-        .toggle-switch {
-            position: relative;
-            width: 48px;
-            height: 26px;
-            flex-shrink: 0;
-        }
-        
-        .toggle-switch input {
-            opacity: 0;
-            width: 0;
-            height: 0;
-        }
-        
-        .toggle-slider {
-            position: absolute;
-            cursor: pointer;
-            top: 0; left: 0; right: 0; bottom: 0;
-            background: var(--bg-input);
-            border: 1px solid var(--border);
-            transition: 0.3s;
-            border-radius: 26px;
-        }
-        
-        .toggle-slider:before {
-            position: absolute;
-            content: "";
-            height: 18px;
-            width: 18px;
-            left: 3px;
-            bottom: 3px;
-            background: var(--text-muted);
-            transition: 0.3s;
-            border-radius: 50%;
-        }
-        
-        .toggle-switch input:checked + .toggle-slider {
-            background: var(--green-subtle);
-            border-color: var(--green);
-        }
-        
-        .toggle-switch input:checked + .toggle-slider:before {
-            background: var(--green);
-            transform: translateX(22px);
-        }
-        
-        /* Hedging Cost Panel */
-        .hedging-cost-panel {
-            background: var(--bg-tertiary);
-            border: 1px solid var(--border);
-            border-radius: 10px;
-            padding: 16px;
-            margin-top: 12px;
-            display: none;
-        }
-        
-        .hedging-cost-panel.show {
-            display: block;
-            animation: slideDown 0.2s ease;
-        }
-        
-        @keyframes slideDown {
-            from { opacity: 0; transform: translateY(-10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        
-        /* Methodology Info Button */
-        .methodology-info-btn {
-            width: 18px;
-            height: 18px;
-            border-radius: 50%;
-            border: 1px solid var(--border-light);
-            background: var(--bg-tertiary);
-            color: var(--text-muted);
-            font-size: 0.65rem;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            margin-left: 6px;
-        }
-        
-        .methodology-info-btn:hover {
-            border-color: var(--cyan);
-            color: var(--cyan);
-            background: rgba(6, 182, 212, 0.1);
-        }
-        
-        /* Methodology Modal */
-        .methodology-modal {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.8);
-            z-index: 1000;
-            overflow-y: auto;
-            padding: 20px;
-        }
-        
-        .methodology-modal.show {
-            display: flex;
-            align-items: flex-start;
-            justify-content: center;
-            animation: fadeIn 0.2s ease;
-        }
-        
-        @keyframes fadeIn {
-            from { opacity: 0; }
-            to { opacity: 1; }
-        }
-        
-        .methodology-content {
-            background: var(--bg-secondary);
-            border: 1px solid var(--border);
-            border-radius: 16px;
-            max-width: 640px;
-            width: 100%;
-            margin: 40px auto;
-            overflow: hidden;
-            animation: slideUp 0.3s ease;
-        }
-        
-        @keyframes slideUp {
-            from { opacity: 0; transform: translateY(20px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        
-        .methodology-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 20px 24px;
-            border-bottom: 1px solid var(--border);
-            background: var(--bg-tertiary);
-        }
-        
-        .methodology-title {
-            font-size: 1.1rem;
-            font-weight: 600;
-            color: var(--text-primary);
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        
-        .methodology-title-icon {
-            font-size: 1.3rem;
-        }
-        
-        .methodology-close {
-            width: 32px;
-            height: 32px;
-            border-radius: 8px;
-            border: 1px solid var(--border);
-            background: transparent;
-            color: var(--text-secondary);
-            cursor: pointer;
-            font-size: 1.2rem;
-            transition: all 0.2s ease;
-        }
-        
-        .methodology-close:hover {
-            background: var(--red);
-            border-color: var(--red);
-            color: white;
-        }
-        
-        .methodology-body {
-            padding: 24px;
-        }
-        
-        .methodology-section {
-            margin-bottom: 24px;
-        }
-        
-        .methodology-section:last-child {
-            margin-bottom: 0;
-        }
-        
-        .methodology-section-title {
-            font-size: 0.85rem;
-            font-weight: 600;
-            color: var(--cyan);
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            margin-bottom: 12px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        
-        .methodology-section-title::before {
-            content: '';
-            width: 3px;
-            height: 14px;
-            background: var(--cyan);
-            border-radius: 2px;
-        }
-        
-        .methodology-text {
-            font-size: 0.9rem;
-            color: var(--text-secondary);
-            line-height: 1.6;
-            margin-bottom: 12px;
-        }
-        
-        .methodology-formula {
-            background: var(--bg-primary);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 16px;
-            margin: 12px 0;
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 0.85rem;
-        }
-        
-        .methodology-formula-main {
-            color: var(--green);
-            font-weight: 600;
-            font-size: 1rem;
-            margin-bottom: 8px;
-        }
-        
-        .methodology-formula-vars {
-            color: var(--text-muted);
-            font-size: 0.8rem;
-        }
-        
-        .methodology-formula-vars span {
-            color: var(--text-secondary);
-        }
-        
-        .methodology-example {
-            background: var(--bg-tertiary);
-            border-left: 3px solid var(--green);
-            padding: 12px 16px;
-            border-radius: 0 8px 8px 0;
-            margin: 12px 0;
-        }
-        
-        .methodology-example-title {
-            font-size: 0.75rem;
-            color: var(--green);
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            margin-bottom: 8px;
-        }
-        
-        .methodology-example-calc {
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 0.85rem;
-            color: var(--text-primary);
-        }
-        
-        .methodology-data-sources {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 12px;
-            margin-top: 12px;
-        }
-        
-        .methodology-data-source {
-            background: var(--bg-primary);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 12px;
-        }
-        
-        .methodology-data-source-name {
-            font-size: 0.75rem;
-            color: var(--text-muted);
-            text-transform: uppercase;
-            letter-spacing: 0.03em;
-            margin-bottom: 4px;
-        }
-        
-        .methodology-data-source-value {
-            font-size: 0.9rem;
-            font-weight: 500;
-            color: var(--text-primary);
-        }
-        
-        .methodology-data-source-badge {
-            display: inline-block;
-            font-size: 0.65rem;
-            padding: 2px 6px;
-            background: var(--green-subtle);
-            color: var(--green);
-            border-radius: 4px;
-            margin-left: 6px;
-            font-weight: 600;
-        }
-        
-        .methodology-warning {
-            background: rgba(234, 179, 8, 0.1);
-            border: 1px solid rgba(234, 179, 8, 0.3);
-            border-radius: 8px;
-            padding: 12px 16px;
-            margin-top: 12px;
-            display: flex;
-            align-items: flex-start;
-            gap: 10px;
-        }
-        
-        .methodology-warning-icon {
-            font-size: 1rem;
-            color: var(--yellow);
-            flex-shrink: 0;
-        }
-        
-        .methodology-warning-text {
-            font-size: 0.8rem;
-            color: var(--yellow);
-            line-height: 1.5;
-        }
-        
-        .methodology-footer {
-            padding: 16px 24px;
-            border-top: 1px solid var(--border);
-            background: var(--bg-tertiary);
-        }
-        
-        .methodology-ref {
-            font-size: 0.75rem;
-            color: var(--text-muted);
-        }
-        
-        .methodology-ref a {
-            color: var(--cyan);
-            text-decoration: none;
-        }
-        
-        .methodology-ref a:hover {
-            text-decoration: underline;
-        }
-        
-        .hedging-cost-suggested {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 12px 14px;
-            background: var(--bg-secondary);
-            border-radius: 8px;
-            margin-bottom: 12px;
-            border: 1px solid transparent;
-            transition: all 0.2s ease;
-        }
-        
-        .hedging-cost-suggested.applied {
-            border-color: var(--green);
-            background: var(--green-subtle);
-        }
-        
-        .hedging-cost-info {
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
-        }
-        
-        .hedging-cost-label {
-            font-size: 0.75rem;
-            color: var(--text-muted);
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }
-        
-        .applied-badge {
-            display: none;
-            font-size: 0.65rem;
-            padding: 2px 6px;
-            background: var(--green);
-            color: var(--bg-primary);
-            border-radius: 4px;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.03em;
-        }
-        
-        .hedging-cost-suggested.applied .applied-badge {
-            display: inline-block;
-        }
-        
-        .hedging-cost-value {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        
-        .hedging-cost-rate {
-            font-size: 1.1rem;
-            font-weight: 600;
-            font-family: 'JetBrains Mono', monospace;
-        }
-        
-        .hedging-cost-rate.negative { color: var(--red); }
-        .hedging-cost-rate.positive { color: var(--green); }
-        .hedging-cost-rate.neutral { color: var(--text-primary); }
-        
-        .hedging-cost-source {
-            font-size: 0.7rem;
-            padding: 2px 6px;
-            background: var(--bg-tertiary);
-            border-radius: 4px;
-            color: var(--text-muted);
-        }
-        
-        .hedging-cost-source.live {
-            background: var(--green-subtle);
-            color: var(--green);
-        }
-        
-        .hedging-cost-instrument {
-            font-size: 0.75rem;
-            color: var(--text-secondary);
-        }
-        
-        .hedging-cost-explanation {
-            display: block;
-            font-size: 0.72rem;
-            color: var(--cyan);
-            margin-top: 4px;
-            font-weight: 500;
-            font-style: italic;
-        }
-        
-        .hedging-cost-explanation:empty {
-            display: none;
-        }
-        
-        .hedging-cost-actions {
-            display: flex;
-            gap: 8px;
-            flex-shrink: 0;
-        }
-        
-        .btn-apply {
-            padding: 10px 16px;
-            background: transparent;
-            color: var(--green);
-            border: 1px solid var(--green);
-            border-radius: 6px;
-            font-size: 0.8rem;
-            font-weight: 500;
-            cursor: pointer;
-            transition: all 0.2s;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }
-        
-        .btn-apply:hover {
-            background: var(--green-subtle);
-        }
-        
-        .btn-apply.applied {
-            background: var(--green);
-            color: var(--bg-primary);
-            border-color: var(--green);
-        }
-        
-        .btn-apply .check-icon {
-            display: none;
-        }
-        
-        .btn-apply.applied .check-icon {
-            display: inline;
-        }
-        
-        .btn-apply.applied .apply-text {
-            display: none;
-        }
-        
-        /* Divider */
-        .hedging-cost-divider {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            margin: 16px 0;
-            color: var(--text-muted);
-            font-size: 0.75rem;
-        }
-        
-        .hedging-cost-divider::before,
-        .hedging-cost-divider::after {
-            content: '';
-            flex: 1;
-            height: 1px;
-            background: var(--border);
-        }
-        
-        /* Manual entry section */
-        .hedging-cost-manual {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 12px 14px;
-            background: var(--bg-secondary);
-            border-radius: 8px;
-            border: 1px solid transparent;
-            transition: all 0.2s ease;
-        }
-        
-        .hedging-cost-manual.applied {
-            border-color: var(--green);
-            background: var(--green-subtle);
-        }
-        
-        .manual-input-group {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        
-        .hedging-cost-manual label {
-            font-size: 0.8rem;
-            color: var(--text-secondary);
-            white-space: nowrap;
-        }
-        
-        .hedging-cost-manual .form-input {
-            padding: 10px 12px;
-            font-size: 0.9rem;
-            width: 100px;
-        }
-        
-        .hedging-cost-manual .input-unit {
-            font-size: 0.75rem;
-        }
-        
-        /* Calculate Button */
-        .btn-calculate {
-            width: 100%;
-            padding: 16px 24px;
-            background: linear-gradient(135deg, var(--green) 0%, var(--green-dim) 100%);
-            color: var(--bg-primary);
-            border: none;
-            border-radius: 12px;
-            font-size: 0.95rem;
-            font-weight: 600;
-            font-family: 'Outfit', sans-serif;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            margin-top: 24px;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-        }
-        
-        .btn-calculate:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 30px rgba(34, 197, 94, 0.3);
-        }
-        
-        .btn-calculate:active { transform: translateY(0); }
-        .btn-calculate:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
-        
-        .btn-calculate .spinner {
-            display: inline-block;
-            animation: spin 1s linear infinite;
-        }
-        
-        @keyframes spin {
-            from { transform: rotate(0deg); }
-            to { transform: rotate(360deg); }
-        }
-        
-        /* Results */
-        .results-wrapper { grid-column: 1 / -1; }
-        .results-card { display: none; }
-        .results-card.show {
-            display: block;
-            animation: fadeSlideUp 0.4s ease;
-        }
-        
-        @keyframes fadeSlideUp {
-            from { opacity: 0; transform: translateY(20px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        
-        /* Results Summary */
-        .results-summary {
-            background: var(--bg-secondary);
-            border-radius: 12px;
-            padding: 16px 20px;
-            margin-bottom: 20px;
-        }
-        
-        .summary-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding-bottom: 12px;
-            border-bottom: 1px solid var(--border);
-            margin-bottom: 12px;
-        }
-        
-        .summary-title {
-            font-size: 0.8rem;
-            color: var(--text-muted);
-            text-transform: uppercase;
-            letter-spacing: 0.06em;
-        }
-        
-        .summary-value {
-            font-size: 1.1rem;
-            font-weight: 600;
-            color: var(--green);
-            font-family: 'JetBrains Mono', monospace;
-        }
-        
-        .summary-row {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            font-size: 0.9rem;
-        }
-        
-        .summary-row span:first-child {
-            color: var(--text-secondary);
-        }
-        
-        .summary-row span:last-child {
-            font-family: 'JetBrains Mono', monospace;
-            color: var(--text-primary);
-        }
-        
-        /* Results Header Info */
-        .results-header-info {
-            display: flex;
-            align-items: center;
-            gap: 16px;
-            padding: 16px 20px;
-            background: var(--bg-secondary);
-            border-radius: 12px;
-            margin-bottom: 20px;
-        }
-        
-        .results-pair {
-            display: flex;
-            flex-direction: column;
-            gap: 2px;
-        }
-        
-        .results-pair-label {
-            font-size: 0.7rem;
-            color: var(--text-muted);
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-        }
-        
-        .results-pair-value {
-            font-size: 1.1rem;
-            font-weight: 600;
-            color: var(--green);
-            font-family: 'JetBrains Mono', monospace;
-        }
-        
-        .results-arrow {
-            color: var(--text-muted);
-            font-size: 1.2rem;
-        }
-        
-        .results-tenor {
-            margin-left: auto;
-            display: flex;
-            flex-direction: column;
-            gap: 2px;
-            text-align: right;
-        }
-        
-        /* Results Block */
-        .results-block {
-            background: var(--bg-secondary);
-            border-radius: 12px;
-            overflow: hidden;
-            margin-bottom: 20px;
-        }
-        
-        .results-block-header {
-            padding: 12px 16px;
-            background: var(--bg-tertiary);
-            border-bottom: 1px solid var(--border);
-        }
-        
-        .results-block-title {
-            font-size: 0.75rem;
-            font-weight: 600;
-            color: var(--text-secondary);
-            text-transform: uppercase;
-            letter-spacing: 0.06em;
-        }
-        
-        /* Results Table */
-        .results-table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-        
-        .results-table th {
-            padding: 12px 16px;
-            text-align: left;
-            font-size: 0.7rem;
-            font-weight: 500;
-            color: var(--text-muted);
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            background: var(--bg-secondary);
-            border-bottom: 1px solid var(--border);
-        }
-        
-        .results-table th:last-child,
-        .results-table td:last-child {
-            text-align: right;
-        }
-        
-        .results-table td {
-            padding: 14px 16px;
-            font-size: 0.9rem;
-            border-bottom: 1px solid var(--border);
-            font-family: 'JetBrains Mono', monospace;
-        }
-        
-        .results-table tbody tr:last-child td {
-            border-bottom: none;
-        }
-        
-        .results-table tbody tr:hover {
-            background: var(--bg-tertiary);
-        }
-        
-        .results-table .currency-cell {
-            font-weight: 600;
-            color: var(--text-primary);
-            font-family: 'Outfit', sans-serif;
-        }
-        
-        .results-table .rate-cell {
-            color: var(--text-secondary);
-        }
-        
-        .results-table .hedge-cost-cell {
-            font-size: 0.85rem;
-        }
-        
-        .results-table .hedge-cost-cell.negative {
-            color: var(--red);
-        }
-        
-        .results-table .hedge-cost-cell.positive {
-            color: var(--green);
-        }
-        
-        .results-table .result-cell {
-            font-weight: 600;
-            color: var(--green);
-        }
-        
-        /* Legacy comparison table (keep for compatibility) */
-        .comparison-table-wrapper {
-            background: var(--bg-secondary);
-            border-radius: 12px;
-            overflow: hidden;
-            margin-bottom: 24px;
-        }
-        
-        .comparison-table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-        
-        .comparison-table th {
-            padding: 14px 16px;
-            text-align: left;
-            font-size: 0.75rem;
-            font-weight: 500;
-            color: var(--text-muted);
-            text-transform: uppercase;
-            letter-spacing: 0.06em;
-            background: var(--bg-tertiary);
-            border-bottom: 1px solid var(--border);
-        }
-        
-        .comparison-table th:last-child,
-        .comparison-table td:last-child {
-            text-align: right;
-        }
-        
-        .comparison-table td {
-            padding: 16px;
-            font-size: 0.95rem;
-            border-bottom: 1px solid var(--border);
-        }
-        
-        .comparison-table tbody tr:last-child td {
-            border-bottom: none;
-        }
-        
-        .comparison-table tbody tr:hover {
-            background: var(--bg-tertiary);
-        }
-        
-        .comparison-table .currency-cell {
-            font-weight: 600;
-            color: var(--text-primary);
-        }
-        
-        .comparison-table .rate-cell {
-            font-family: 'JetBrains Mono', monospace;
-            color: var(--text-secondary);
-        }
-        
-        .comparison-table .hedged-cell {
-            font-family: 'JetBrains Mono', monospace;
-            font-weight: 600;
-            color: var(--green);
-            font-size: 1.05rem;
-        }
-        
-        .comparison-table .total-cell {
-            font-family: 'JetBrains Mono', monospace;
-            color: var(--text-primary);
-        }
-        
-        .rate-positive { color: var(--green) !important; }
-        .rate-negative { color: var(--red) !important; }
-        
-        /* Hedging cost badge in results table */
-        .hedging-cost-badge {
-            display: inline-block;
-            font-size: 0.65rem;
-            padding: 2px 5px;
-            margin-left: 6px;
-            border-radius: 4px;
-            vertical-align: middle;
-        }
-        
-        .hedging-cost-badge.negative {
-            background: rgba(239, 68, 68, 0.15);
-            color: var(--red);
-        }
-        
-        .hedging-cost-badge.positive {
-            background: var(--green-subtle);
-            color: var(--green);
-        }
-        
-        /* Hedging cost in assumptions - matches other rows but with accent */
-        .assumption-row.hedging-cost-assumption {
-            border-top: 1px dashed var(--border);
-            padding-top: 12px;
-            margin-top: 8px;
-        }
-        
-        .assumption-row.hedging-cost-assumption .assumption-value.negative {
-            color: var(--red);
-        }
-        
-        .assumption-row.hedging-cost-assumption .assumption-value.positive {
-            color: var(--green);
-        }
-        
-        /* Final total row in assumptions */
-        .assumption-row.assumption-total {
-            border-top: 1px solid var(--border);
-            padding-top: 12px;
-            margin-top: 8px;
-        }
-        
-        .assumption-row.assumption-total .assumption-name {
-            color: var(--green);
-        }
-        
-        .assumption-row.assumption-total .assumption-value.highlight {
-            color: var(--green);
-            font-weight: 700;
-        }
-        
-        /* Chart Section */
-        .chart-section {
-            background: var(--bg-secondary);
-            border-radius: 12px;
-            padding: 20px;
-            margin-bottom: 24px;
-        }
-        
-        .chart-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 16px;
-        }
-        
-        .chart-title {
-            font-size: 0.8rem;
-            font-weight: 500;
-            color: var(--text-secondary);
-            text-transform: uppercase;
-            letter-spacing: 0.06em;
-        }
-        
-        .chart-legend {
-            display: flex;
-            gap: 16px;
-        }
-        
-        .legend-item {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            font-size: 0.75rem;
-            color: var(--text-muted);
-        }
-        
-        .legend-dot {
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-        }
-        
-        .chart-container {
-            position: relative;
-            height: 280px;
-        }
-        
-        /* Assumptions */
-        .assumptions-section {
-            background: var(--bg-secondary);
-            border-radius: 12px;
-            overflow: hidden;
-        }
-        
-        .assumptions-header {
-            padding: 16px 20px;
-            border-bottom: 1px solid var(--border);
-            font-size: 0.8rem;
-            font-weight: 500;
-            color: var(--text-secondary);
-            text-transform: uppercase;
-            letter-spacing: 0.06em;
-        }
-        
-        .assumption-row {
-            display: grid;
-            grid-template-columns: 1fr auto auto;
-            gap: 20px;
-            padding: 14px 20px;
-            border-bottom: 1px solid var(--border);
-            align-items: center;
-        }
-        
-        .assumption-row:last-child { border-bottom: none; }
-        
-        .assumption-name {
-            font-size: 0.9rem;
-            color: var(--text-secondary);
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        
-        .live-tag {
-            font-size: 0.6rem;
-            padding: 3px 6px;
-            background: var(--green);
-            color: var(--bg-primary);
-            border-radius: 4px;
-            font-weight: 600;
-            font-family: 'JetBrains Mono', monospace;
-            text-transform: uppercase;
-        }
-        
-        .assumption-source {
-            font-size: 0.75rem;
-            color: var(--text-muted);
-            font-family: 'JetBrains Mono', monospace;
-        }
-        
-        .assumption-value {
-            font-size: 0.95rem;
-            font-weight: 600;
-            color: var(--text-primary);
-            font-family: 'JetBrains Mono', monospace;
-            text-align: right;
-            min-width: 80px;
-        }
-        
-        /* Status Messages */
-        .status-message {
-            padding: 14px 18px;
-            border-radius: 10px;
-            font-size: 0.85rem;
-            margin-top: 16px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        
-        .status-message.success {
-            background: var(--green-subtle);
-            color: var(--green);
-            border: 1px solid rgba(34, 197, 94, 0.2);
-        }
-        
-        .status-message.warning {
-            background: rgba(234, 179, 8, 0.08);
-            color: var(--yellow);
-            border: 1px solid rgba(234, 179, 8, 0.2);
-        }
-        
-        /* Error Banner */
-        .error-banner {
-            display: none;
-            background: rgba(239, 68, 68, 0.1);
-            border: 1px solid rgba(239, 68, 68, 0.3);
-            border-radius: 10px;
-            padding: 14px 18px;
-            margin-bottom: 20px;
-            color: var(--red);
-            font-size: 0.9rem;
-            align-items: center;
-            gap: 10px;
-        }
-        
-        .error-banner.show { display: flex; }
-        
-        /* Footer */
-        .footer {
-            text-align: center;
-            padding: 40px 20px 24px;
-            color: var(--text-muted);
-            font-size: 0.8rem;
-        }
-        
-        .footer .designer {
-            font-weight: 500;
-            color: var(--green);
-        }
-        
-        .footer .powered-by {
-            margin-top: 8px;
-            font-size: 0.7rem;
-            opacity: 0.7;
-        }
-        
-        /* Thank You Button */
-        .thanks-section {
-            margin-top: 24px;
-            padding-top: 24px;
-            border-top: 1px solid var(--border);
-        }
-        
-        .thanks-text {
-            font-size: 0.85rem;
-            color: var(--text-secondary);
-            margin-bottom: 12px;
-        }
-        
-        .btn-thanks {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            padding: 12px 24px;
-            background: transparent;
-            border: 1px solid var(--green);
-            border-radius: 50px;
-            color: var(--green);
-            font-size: 0.85rem;
-            font-weight: 500;
-            font-family: 'Outfit', sans-serif;
-            text-decoration: none;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            position: relative;
-            overflow: hidden;
-        }
-        
-        .btn-thanks::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: -100%;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(135deg, var(--green) 0%, var(--emerald) 100%);
-            transition: left 0.3s ease;
-            z-index: -1;
-        }
-        
-        .btn-thanks:hover {
-            color: var(--bg-primary);
-            border-color: var(--green);
-            transform: translateY(-2px);
-            box-shadow: 0 8px 25px rgba(34, 197, 94, 0.3);
-        }
-        
-        .btn-thanks:hover::before {
-            left: 0;
-        }
-        
-        .btn-thanks .heart {
-            font-size: 1.1rem;
-            transition: transform 0.3s ease;
-        }
-        
-        .btn-thanks:hover .heart {
-            transform: scale(1.2);
-            animation: heartbeat 0.6s ease-in-out infinite;
-        }
-        
-        @keyframes heartbeat {
-            0%, 100% { transform: scale(1.2); }
-            50% { transform: scale(1.4); }
-        }
-        
-        .thanks-note {
-            margin-top: 8px;
-            font-size: 0.7rem;
-            color: var(--text-muted);
-            opacity: 0.6;
-        }
-        
-        /* Mobile */
-        @media (max-width: 768px) {
-            .app { padding: 16px; }
-            .header {
-                flex-direction: column;
-                align-items: flex-start;
-                gap: 16px;
-                padding: 16px 0 24px;
-            }
-            .live-indicators {
-                width: 100%;
-                display: grid;
-                grid-template-columns: repeat(4, 1fr);
-                gap: 6px;
-            }
-            .live-dot {
-                justify-content: center;
-                padding: 6px 4px;
-                font-size: 0.65rem;
-            }
-            .main-grid {
-                grid-template-columns: 1fr;
-                gap: 16px;
-            }
-            .assumption-row {
-                grid-template-columns: 1fr auto;
-                gap: 12px;
-            }
-            .assumption-source { display: none; }
-            .card-body { padding: 18px; }
-            .chart-container { height: 220px; }
-            .chart-legend { flex-wrap: wrap; gap: 8px; }
-            
-            /* Comparison table mobile */
-            .comparison-table th,
-            .comparison-table td {
-                padding: 12px 10px;
-                font-size: 0.85rem;
-            }
-            .comparison-table .hedged-cell {
-                font-size: 0.95rem;
-            }
-            
-            /* Additional curves container */
-            .additional-curves-row {
-                flex-wrap: wrap;
-            }
-            .additional-curves-row .form-select-sm {
-                width: 100%;
-                margin-bottom: 8px;
-            }
-        }
-        
-        @media (max-width: 480px) {
-            .brand-text h1 { font-size: 1.2rem; }
-            .live-indicators {
-                grid-template-columns: repeat(4, 1fr);
-            }
-            .live-dot { 
-                padding: 5px 2px; 
-                font-size: 0.6rem;
-                gap: 3px;
-            }
-            .live-dot .dot {
-                width: 5px;
-                height: 5px;
-            }
-            
-            /* Hide some columns on very small screens */
-            .comparison-table th:nth-child(2),
-            .comparison-table td:nth-child(2) {
-                display: none;
-            }
-        }
-        
-        /* ============================================
-           ANALYSIS TOOLS - Compare, Breakeven, History
-           ============================================ */
-        
-        .analysis-section {
-            margin-top: 24px;
-            padding-top: 24px;
-            border-top: 1px solid var(--border);
-        }
-        
-        .analysis-tabs {
-            display: flex;
-            gap: 8px;
-            margin-bottom: 20px;
-            flex-wrap: wrap;
-        }
-        
-        .analysis-tab {
-            padding: 10px 18px;
-            background: var(--bg-tertiary);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            color: var(--text-secondary);
-            font-size: 0.85rem;
-            font-weight: 500;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            font-family: 'Outfit', sans-serif;
-        }
-        
-        .analysis-tab:hover {
-            border-color: var(--green);
-            color: var(--green);
-        }
-        
-        .analysis-tab.active {
-            background: var(--green-subtle);
-            border-color: var(--green);
-            color: var(--green);
-        }
-        
-        .analysis-tab .tab-icon {
-            margin-right: 6px;
-        }
-        
-        .analysis-content {
-            display: none;
-        }
-        
-        .analysis-content.active {
-            display: block;
-            animation: fadeIn 0.3s ease;
-        }
-        
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        
-        /* Compare Mode */
-        .compare-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-            gap: 16px;
-            margin-bottom: 20px;
-        }
-        
-        .compare-card {
-            background: var(--bg-tertiary);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 18px;
-            position: relative;
-        }
-        
-        .compare-card.best {
-            border-color: var(--green);
-            box-shadow: 0 0 20px var(--green-glow);
-        }
-        
-        .compare-card.best::before {
-            content: '★ BEST';
-            position: absolute;
-            top: -10px;
-            right: 16px;
-            background: var(--green);
-            color: var(--bg-primary);
-            font-size: 0.65rem;
-            font-weight: 700;
-            padding: 4px 10px;
-            border-radius: 4px;
-            letter-spacing: 0.5px;
-        }
-        
-        .compare-card-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 16px;
-            padding-bottom: 12px;
-            border-bottom: 1px solid var(--border);
-        }
-        
-        .compare-card-title {
-            font-size: 1.1rem;
-            font-weight: 600;
-            color: var(--text-primary);
-        }
-        
-        .compare-card-pair {
-            font-size: 0.75rem;
-            color: var(--text-muted);
-            background: var(--bg-input);
-            padding: 4px 8px;
-            border-radius: 4px;
-        }
-        
-        .compare-metric {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 8px 0;
-        }
-        
-        .compare-metric:not(:last-child) {
-            border-bottom: 1px dashed var(--border);
-        }
-        
-        .compare-metric-label {
-            font-size: 0.8rem;
-            color: var(--text-secondary);
-        }
-        
-        .compare-metric-value {
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 0.9rem;
-            font-weight: 600;
-        }
-        
-        .compare-metric-value.positive { color: var(--green); }
-        .compare-metric-value.negative { color: var(--red); }
-        .compare-metric-value.neutral { color: var(--text-primary); }
-        
-        .compare-net-return {
-            margin-top: 16px;
-            padding-top: 16px;
-            border-top: 2px solid var(--border);
-            text-align: center;
-        }
-        
-        .compare-net-label {
-            font-size: 0.75rem;
-            color: var(--text-muted);
-            margin-bottom: 4px;
-        }
-        
-        .compare-net-value {
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 1.5rem;
-            font-weight: 700;
-        }
-        
-        /* Breakeven Analysis */
-        .breakeven-container {
-            background: var(--bg-tertiary);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 20px;
-        }
-        
-        .breakeven-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
-        }
-        
-        .breakeven-title {
-            font-size: 1rem;
-            font-weight: 600;
-            color: var(--text-primary);
-        }
-        
-        .breakeven-subtitle {
-            font-size: 0.75rem;
-            color: var(--text-muted);
-            margin-top: 4px;
-        }
-        
-        .breakeven-gauge {
-            position: relative;
-            height: 40px;
-            background: linear-gradient(to right, 
-                var(--green) 0%, 
-                var(--yellow) 50%, 
-                var(--red) 100%);
-            border-radius: 8px;
-            margin: 20px 0;
-            overflow: hidden;
-        }
-        
-        .breakeven-marker {
-            position: absolute;
-            top: -8px;
-            width: 4px;
-            height: 56px;
-            background: var(--text-primary);
-            border-radius: 2px;
-            transform: translateX(-50%);
-            box-shadow: 0 0 10px rgba(0,0,0,0.5);
-        }
-        
-        .breakeven-marker::before {
-            content: attr(data-label);
-            position: absolute;
-            top: -22px;
-            left: 50%;
-            transform: translateX(-50%);
-            font-size: 0.7rem;
-            font-weight: 600;
-            color: var(--text-primary);
-            white-space: nowrap;
-            background: var(--bg-card);
-            padding: 2px 6px;
-            border-radius: 4px;
-        }
-        
-        .breakeven-labels {
-            display: flex;
-            justify-content: space-between;
-            font-size: 0.75rem;
-            color: var(--text-muted);
-            margin-top: 8px;
-        }
-        
-        .breakeven-metrics {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 16px;
-            margin-top: 20px;
-        }
-        
-        .breakeven-metric {
-            text-align: center;
-            padding: 16px;
-            background: var(--bg-input);
-            border-radius: 8px;
-        }
-        
-        .breakeven-metric-label {
-            font-size: 0.7rem;
-            color: var(--text-muted);
-            margin-bottom: 6px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-        
-        .breakeven-metric-value {
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 1.2rem;
-            font-weight: 700;
-        }
-        
-        .breakeven-metric-value.good { color: var(--green); }
-        .breakeven-metric-value.warning { color: var(--yellow); }
-        .breakeven-metric-value.danger { color: var(--red); }
-        
-        .breakeven-verdict {
-            margin-top: 20px;
-            padding: 16px;
-            border-radius: 8px;
-            text-align: center;
-        }
-        
-        .breakeven-verdict.favorable {
-            background: rgba(34, 197, 94, 0.1);
-            border: 1px solid var(--green);
-        }
-        
-        .breakeven-verdict.marginal {
-            background: rgba(234, 179, 8, 0.1);
-            border: 1px solid var(--yellow);
-        }
-        
-        .breakeven-verdict.unfavorable {
-            background: rgba(239, 68, 68, 0.1);
-            border: 1px solid var(--red);
-        }
-        
-        .breakeven-verdict-text {
-            font-size: 0.9rem;
-            font-weight: 500;
-        }
-        
-        .breakeven-verdict.favorable .breakeven-verdict-text { color: var(--green); }
-        .breakeven-verdict.marginal .breakeven-verdict-text { color: var(--yellow); }
-        .breakeven-verdict.unfavorable .breakeven-verdict-text { color: var(--red); }
-        
-        /* Hedge Cost History Chart */
-        .history-container {
-            background: var(--bg-tertiary);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 20px;
-        }
-        
-        .history-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 16px;
-        }
-        
-        .history-title {
-            font-size: 1rem;
-            font-weight: 600;
-            color: var(--text-primary);
-        }
-        
-        .history-chart-container {
-            height: 250px;
-            position: relative;
-        }
-        
-        .history-note {
-            margin-top: 12px;
-            font-size: 0.75rem;
-            color: var(--text-muted);
-            text-align: center;
-            font-style: italic;
-        }
-        
-        /* Mobile adjustments for analysis */
-        @media (max-width: 768px) {
-            .analysis-tabs {
-                overflow-x: auto;
-                flex-wrap: nowrap;
-                -webkit-overflow-scrolling: touch;
-            }
-            
-            .analysis-tab {
-                white-space: nowrap;
-                flex-shrink: 0;
-            }
-            
-            .compare-grid {
-                grid-template-columns: 1fr;
-            }
-            
-            .breakeven-metrics {
-                grid-template-columns: 1fr;
-            }
-        }
-    </style>
-</head>
-<body>
-    <div class="app">
-        <!-- Header -->
-        <header class="header">
-            <div class="brand">
-                <div class="logo">FX</div>
-                <div class="brand-text">
-                    <h1>CrossFX Yield</h1>
-                    <div class="tagline">CIP-Based Hedged Return Calculator</div>
-                </div>
-            </div>
-            <div class="live-indicators">
-                <div class="live-dot"><span class="dot" id="dotBRL"></span> BRL</div>
-                <div class="live-dot"><span class="dot" id="dotUSD"></span> USD</div>
-                <div class="live-dot"><span class="dot" id="dotEUR"></span> EUR</div>
-                <div class="live-dot"><span class="dot" id="dotGBP"></span> GBP</div>
-                <div class="live-dot"><span class="dot" id="dotCHF"></span> CHF</div>
-                <div class="live-dot"><span class="dot" id="dotJPY"></span> JPY</div>
-                <div class="live-dot"><span class="dot" id="dotCAD"></span> CAD</div>
-                <div class="live-dot"><span class="dot" id="dotAUD"></span> AUD</div>
-                <div class="live-dot"><span class="dot" id="dotARS"></span> ARS</div>
-                <div class="live-dot"><span class="dot" id="dotCNY"></span> CNY</div>
-            </div>
-        </header>
-        
-        <!-- Main Content -->
-        <main class="main-grid">
-            <!-- Base Currency Card -->
-            <div class="card">
-                <div class="card-header">
-                    <span class="card-title">Base Currency</span>
-                </div>
-                <div class="card-body">
-                    <div class="error-banner" id="errorBanner">
-                        <span>⚠</span>
-                        <span id="errorText"></span>
-                    </div>
-                    
-                    <div class="form-row">
-                        <label class="form-label">Currency</label>
-                        <div class="select-wrapper">
-                            <select class="form-select" id="baseCurrency" required>
-                                <option value="">Select currency...</option>
-                                <option value="BRL">BRL — Brazilian Real</option>
-                                <option value="USD">USD — US Dollar</option>
-                                <option value="EUR">EUR — Euro</option>
-                                <option value="GBP">GBP — British Pound</option>
-                                <option value="CHF">CHF — Swiss Franc</option>
-                                <option value="JPY">JPY — Japanese Yen</option>
-                                <option value="ARS">ARS — Argentine Peso</option>
-                                <option value="CNY">CNY — Chinese Yuan</option>
-                                <option value="CAD">CAD — Canadian Dollar</option>
-                                <option value="AUD">AUD — Australian Dollar</option>
-                            </select>
-                        </div>
-                    </div>
-                    
-                    <div class="form-row">
-                        <label class="form-label">Indexer / Rate</label>
-                        <div class="select-wrapper">
-                            <select class="form-select" id="indexerKey" required>
-                                <option value="">Select currency first...</option>
-                            </select>
-                        </div>
-                    </div>
-                    
-                    <div class="form-row">
-                        <label class="form-label">Credit Spread</label>
-                        <div class="input-with-unit">
-                            <input type="number" class="form-input" id="spread" min="0" max="100" step="0.01" value="2.50" required>
-                            <span class="input-unit">% p.a.</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            
-            <!-- Target & Parameters Card -->
-            <div class="card">
-                <div class="card-header">
-                    <span class="card-title">Target & Parameters</span>
-                    <button type="button" class="btn-add" id="addTargetBtn" title="Add another target currency">
-                        <span>+</span>
-                    </button>
-                </div>
-                <div class="card-body">
-                    <div id="targetsContainer">
-                        <div class="target-row" data-target-id="1">
-                            <div class="form-row">
-                                <label class="form-label">Target Currency</label>
-                                <div class="input-with-remove">
-                                    <div class="select-wrapper">
-                                        <select class="form-select target-currency" required>
-                                            <option value="">Select currency...</option>
-                                            <option value="BRL">BRL — Brazilian Real</option>
-                                            <option value="USD" selected>USD — US Dollar</option>
-                                            <option value="EUR">EUR — Euro</option>
-                                            <option value="GBP">GBP — British Pound</option>
-                                            <option value="CHF">CHF — Swiss Franc</option>
-                                            <option value="JPY">JPY — Japanese Yen</option>
-                                            <option value="ARS">ARS — Argentine Peso</option>
-                                            <option value="CNY">CNY — Chinese Yuan</option>
-                                            <option value="CAD">CAD — Canadian Dollar</option>
-                                            <option value="AUD">AUD — Australian Dollar</option>
-                                        </select>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="form-row">
-                        <label class="form-label">Tenor</label>
-                        <div class="input-with-unit">
-                            <input type="number" class="form-input" id="tenor" min="0.1" max="50" step="0.1" value="1" required>
-                            <span class="input-unit">years</span>
-                        </div>
-                    </div>
-                    
-                    <!-- Hedging Cost Toggle -->
-                    <div class="toggle-row">
-                        <div class="toggle-label">
-                            <span class="toggle-title">Include Hedging Cost</span>
-                            <span class="toggle-subtitle">Cross-currency basis / NDF cost</span>
-                        </div>
-                        <label class="toggle-switch">
-                            <input type="checkbox" id="includeHedgingCost">
-                            <span class="toggle-slider"></span>
-                        </label>
-                    </div>
-                    
-                    <!-- Hedging Cost Panel -->
-                    <div class="hedging-cost-panel" id="hedgingCostPanel">
-                        <div class="hedging-cost-suggested" id="hedgingCostSuggested">
-                            <div class="hedging-cost-info">
-                                <span class="hedging-cost-label">
-                                    Suggested Cost
-                                    <button type="button" class="methodology-info-btn" id="showMethodologyBtn" title="View methodology">?</button>
-                                    <span class="applied-badge">✓ Applied</span>
-                                </span>
-                                <div class="hedging-cost-value">
-                                    <span class="hedging-cost-rate neutral" id="hedgingCostRate">— bps</span>
-                                    <span class="hedging-cost-source" id="hedgingCostSource">Reference</span>
-                                </div>
-                                <span class="hedging-cost-instrument" id="hedgingCostInstrument">Select currencies first</span>
-                                <span class="hedging-cost-explanation" id="hedgingCostExplanation"></span>
-                            </div>
-                            <div class="hedging-cost-actions">
-                                <button type="button" class="btn-apply" id="useSuggestedBtn">
-                                    <span class="check-icon">✓</span>
-                                    <span class="apply-text">Apply</span>
-                                </button>
-                            </div>
-                        </div>
-                        
-                        <div class="hedging-cost-divider">or</div>
-                        
-                        <div class="hedging-cost-manual" id="hedgingCostManual">
-                            <div class="manual-input-group">
-                                <label>Manual override:</label>
-                                <div class="input-with-unit">
-                                    <input type="number" class="form-input" id="manualHedgingCost" step="0.1" placeholder="0">
-                                    <span class="input-unit">bps</span>
-                                </div>
-                            </div>
-                            <div class="hedging-cost-actions">
-                                <button type="button" class="btn-apply" id="applyManualBtn">
-                                    <span class="check-icon">✓</span>
-                                    <span class="apply-text">Apply</span>
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <button type="button" class="btn-calculate" id="calculateBtn">
-                        Calculate Hedged Returns
-                    </button>
-                </div>
-            </div>
-            
-            <!-- Results -->
-            <div class="results-wrapper">
-                <div class="card results-card" id="resultsCard">
-                    <div class="card-header">
-                        <span class="card-title">Calculation Results</span>
-                        <span class="card-badge" id="resultDate"></span>
-                    </div>
-                    <div class="card-body">
-                        <!-- Results Header -->
-                        <div class="results-header-info">
-                            <div class="results-pair">
-                                <span class="results-pair-label">Base</span>
-                                <span class="results-pair-value" id="summaryBaseCurrency">—</span>
-                            </div>
-                            <span class="results-arrow">→</span>
-                            <div class="results-pair">
-                                <span class="results-pair-label">Target</span>
-                                <span class="results-pair-value" id="summaryTargetCurrency">—</span>
-                            </div>
-                            <div class="results-tenor">
-                                <span class="results-pair-label">Tenor</span>
-                                <span class="results-pair-value" id="summaryTenor">—</span>
-                            </div>
-                        </div>
-                        
-                        <!-- Block 1: Annual Returns -->
-                        <div class="results-block">
-                            <div class="results-block-header">
-                                <span class="results-block-title">Annual Returns (p.a.)</span>
-                            </div>
-                            <table class="results-table" id="annualResultsTable">
-                                <thead id="annualResultsHead">
-                                    <tr>
-                                        <th>Target</th>
-                                        <th>Base Rate</th>
-                                        <th>Hedged Return</th>
-                                        <th>Net Return p.a.</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="annualResultsBody">
-                                    <!-- Dynamic rows -->
-                                </tbody>
-                            </table>
-                        </div>
-                        
-                        <!-- Block 2: Full Tenor Returns -->
-                        <div class="results-block">
-                            <div class="results-block-header">
-                                <span class="results-block-title">Total Returns (Full Tenor)</span>
-                            </div>
-                            <table class="results-table" id="tenorResultsTable">
-                                <thead id="tenorResultsHead">
-                                    <tr>
-                                        <th>Target</th>
-                                        <th>Base Total</th>
-                                        <th>Hedged Total</th>
-                                        <th>Net Total</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="tenorResultsBody">
-                                    <!-- Dynamic rows -->
-                                </tbody>
-                            </table>
-                        </div>
-                        
-                        <!-- Yield Curve Chart -->
-                        <div class="chart-section">
-                            <div class="chart-header">
-                                <span class="chart-title">Risk-Free Yield Curves</span>
-                                <div class="chart-controls">
-                                    <button type="button" class="btn-add-curve" id="addCurveBtn" title="Add another curve">
-                                        <span>+ Add Curve</span>
-                                    </button>
-                                </div>
-                            </div>
-                            <div class="chart-legend" id="chartLegend">
-                                <!-- Dynamic legend items will be added here -->
-                            </div>
-                            <div class="additional-curves-container" id="additionalCurvesContainer" style="display: none;">
-                                <div class="additional-curves-row">
-                                    <div class="select-wrapper select-wrapper-sm">
-                                        <select class="form-select form-select-sm" id="additionalCurveSelect">
-                                            <option value="">Select currency to add...</option>
-                                            <option value="BRL">BRL</option>
-                                            <option value="USD">USD</option>
-                                            <option value="EUR">EUR</option>
-                                            <option value="GBP">GBP</option>
-                                            <option value="CHF">CHF</option>
-                                            <option value="JPY">JPY</option>
-                                            <option value="CNY">CNY</option>
-                                            <option value="CAD">CAD</option>
-                                            <option value="AUD">AUD</option>
-                                        </select>
-                                    </div>
-                                    <button type="button" class="btn-add-sm" id="confirmAddCurve">Add</button>
-                                    <button type="button" class="btn-cancel-sm" id="cancelAddCurve">✕</button>
-                                </div>
-                            </div>
-                            <div class="chart-container">
-                                <canvas id="yieldCurveChart"></canvas>
-                            </div>
-                        </div>
-                        
-                        <!-- Analysis Tools Section -->
-                        <div class="analysis-section" id="analysisSection" style="display: none;">
-                            <div class="analysis-tabs">
-                                <button class="analysis-tab active" data-tab="compare">
-                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;">
-                                        <rect x="3" y="3" width="7" height="7"></rect>
-                                        <rect x="14" y="3" width="7" height="7"></rect>
-                                        <rect x="14" y="14" width="7" height="7"></rect>
-                                        <rect x="3" y="14" width="7" height="7"></rect>
-                                    </svg>
-                                    Compare
-                                </button>
-                                <button class="analysis-tab" data-tab="breakeven">
-                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;">
-                                        <circle cx="12" cy="12" r="10"></circle>
-                                        <line x1="12" y1="8" x2="12" y2="16"></line>
-                                        <line x1="8" y1="12" x2="16" y2="12"></line>
-                                    </svg>
-                                    Breakeven
-                                </button>
-                                <button class="analysis-tab" data-tab="history">
-                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;">
-                                        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
-                                    </svg>
-                                    Tenor Curve
-                                </button>
-                            </div>
-                            
-                            <!-- Compare Mode -->
-                            <div class="analysis-content active" id="compareContent">
-                                <div class="compare-grid" id="compareGrid">
-                                    <!-- Cards will be populated dynamically -->
-                                </div>
-                            </div>
-                            
-                            <!-- Breakeven Analysis -->
-                            <div class="analysis-content" id="breakevenContent">
-                                <div class="breakeven-container">
-                                    <div class="breakeven-header">
-                                        <div>
-                                            <div class="breakeven-title">Hedge Cost Sensitivity</div>
-                                            <div class="breakeven-subtitle">How much can hedge costs change before the trade breaks even?</div>
-                                        </div>
-                                    </div>
-                                    
-                                    <div class="breakeven-explanation" style="margin: 16px 0; padding: 12px; background: var(--bg-input); border-radius: 8px; font-size: 0.8rem;">
-                                        <div style="color: var(--text-muted); margin-bottom: 8px;">
-                                            <strong style="color: var(--text-secondary);">What this shows:</strong>
-                                        </div>
-                                        <div style="color: var(--text-muted); line-height: 1.5;">
-                                            The <strong style="color: var(--green);">breakeven hedge cost</strong> is the point where the hedged return equals the base return.
-                                            If actual hedge costs go beyond this point, the trade becomes unprofitable.
-                                            The <strong style="color: var(--cyan);">cushion</strong> shows how much room you have before reaching breakeven.
-                                        </div>
-                                    </div>
-                                    
-                                    <div class="breakeven-metrics">
-                                        <div class="breakeven-metric">
-                                            <div class="breakeven-metric-label">Current Hedge Cost</div>
-                                            <div class="breakeven-metric-value" id="currentHedgeCostMetric">—</div>
-                                            <div class="breakeven-metric-note" style="font-size: 0.65rem; color: var(--text-muted); margin-top: 4px;">Applied to calculation</div>
-                                        </div>
-                                        <div class="breakeven-metric">
-                                            <div class="breakeven-metric-label">Breakeven Point</div>
-                                            <div class="breakeven-metric-value" id="breakevenCostMetric">—</div>
-                                            <div class="breakeven-metric-note" style="font-size: 0.65rem; color: var(--text-muted); margin-top: 4px;">Hedged = Base return</div>
-                                        </div>
-                                        <div class="breakeven-metric">
-                                            <div class="breakeven-metric-label">Safety Margin</div>
-                                            <div class="breakeven-metric-value" id="cushionMetric">—</div>
-                                            <div class="breakeven-metric-note" style="font-size: 0.65rem; color: var(--text-muted); margin-top: 4px;">Room before breakeven</div>
-                                        </div>
-                                    </div>
-                                    
-                                    <div class="breakeven-verdict" id="breakevenVerdict">
-                                        <div class="breakeven-verdict-text" id="breakevenVerdictText">
-                                            Calculate results to see breakeven analysis
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            <!-- Tenor Analysis (Hedge Cost Across Tenors) -->
-                            <div class="analysis-content" id="historyContent">
-                                <div class="history-container">
-                                    <div class="history-header">
-                                        <div class="history-title">Hedge Cost by Tenor</div>
-                                    </div>
-                                    <div class="history-chart-container">
-                                        <canvas id="tenorAnalysisChart"></canvas>
-                                    </div>
-                                    <div class="history-note">
-                                        Shows estimated hedge costs at different tenors for the selected currency pair.
-                                        <br><span style="color: var(--text-muted);">Negative = you pay carry | Positive = you receive carry</span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div class="assumptions-section">
-                            <div class="assumptions-header">Key Assumptions</div>
-                            <div id="assumptionsList"></div>
-                        </div>
-                        
-                        <div id="statusMessages"></div>
-                    </div>
-                </div>
-            </div>
-        </main>
-        
-        <!-- Footer -->
-        <footer class="footer">
-            <div>Designed by <span class="designer">Vinicius Senger</span></div>
-            <div class="powered-by">Powered by BCB · FRED · ECB · BoE</div>
-            
-            <div class="thanks-section">
-                <div class="thanks-text">Find this useful?</div>
-                <a href="mailto:senger.vinicius@gmail.com?subject=Thanks%20for%20CrossFX%20Yield!&body=Hey%20Vini!%0A%0AJust%20wanted%20to%20say%20thanks%20for%20building%20CrossFX%20Yield.%20It's%20really%20helpful!%0A%0ACheers!" 
-                   class="btn-thanks">
-                    <span class="heart">💚</span>
-                    Say Thanks to Vini
-                </a>
-                <div class="thanks-note">No fees applied — just good vibes ✨</div>
-            </div>
-        </footer>
-    </div>
 
-    <script>
-        const API_BASE = window.location.origin + '/api';
-        let yieldChart = null;
-        let targetCounter = 1;
-        let additionalCurves = []; // Extra curves added to chart (not for calculation)
-        let calculatedResults = []; // Store results for chart
-        let suggestedHedgingCost = null; // Store suggested hedging cost
-        let useSuggestedCost = true; // Track which cost to use
-        
-        // Color palette for curves (different shades of green/teal)
-        const curveColors = [
-            '#22c55e', // green
-            '#14b8a6', // teal
-            '#06b6d4', // cyan
-            '#10b981', // emerald
-            '#84cc16', // lime
-            '#6ee7b7', // light emerald
-            '#2dd4bf', // light teal
-            '#a3e635', // light lime
-            '#4ade80', // light green
-        ];
-        
-        // Hedging cost toggle handler
-        document.getElementById('includeHedgingCost').addEventListener('change', function() {
-            const panel = document.getElementById('hedgingCostPanel');
-            if (this.checked) {
-                panel.classList.add('show');
-                updateHedgingCostSuggestion();
-                // Auto-apply suggested by default
-                applySuggestedCost();
-            } else {
-                panel.classList.remove('show');
-                clearHedgingCostSelection();
-            }
-        });
-        
-        // Store current hedging cost data for methodology display
-        let currentHedgingCostData = null;
-        
-        // Fetch hedging cost suggestion
-        async function updateHedgingCostSuggestion() {
-            const baseCurrency = document.getElementById('baseCurrency').value;
-            const targetRows = document.querySelectorAll('.target-currency');
-            const firstTarget = targetRows.length > 0 ? targetRows[0].value : '';
-            const tenor = parseFloat(document.getElementById('tenor').value) || 5;
-            
-            if (!baseCurrency || !firstTarget) {
-                document.getElementById('hedgingCostRate').textContent = '— bps';
-                document.getElementById('hedgingCostInstrument').textContent = 'Select currencies first';
-                document.getElementById('hedgingCostExplanation').textContent = '';
-                currentHedgingCostData = null;
-                updateMethodologyModal(null);
-                return;
-            }
-            
-            try {
-                const res = await fetch(`${API_BASE}/hedging-cost/${baseCurrency}/${firstTarget}?tenor=${tenor}`);
-                const data = await res.json();
-                
-                suggestedHedgingCost = data.cost_bps;
-                currentHedgingCostData = data; // Store full data
-                
-                const rateEl = document.getElementById('hedgingCostRate');
-                const sourceEl = document.getElementById('hedgingCostSource');
-                const instrumentEl = document.getElementById('hedgingCostInstrument');
-                const explanationEl = document.getElementById('hedgingCostExplanation');
-                
-                // Check if manual entry is required (e.g., ARS)
-                const requiresManual = data.requires_manual || false;
-                const costBps = data.cost_bps ?? 0;
-                
-                if (requiresManual) {
-                    // ARS or other capital-controlled currencies
-                    rateEl.textContent = '— bps';
-                    rateEl.className = 'hedging-cost-rate neutral';
-                    sourceEl.textContent = 'Manual';
-                    sourceEl.className = 'hedging-cost-source';
-                    instrumentEl.textContent = data.instrument || 'NDF';
-                    explanationEl.textContent = 'Capital controls • Enter NDF quote below';
-                    suggestedHedgingCost = null; // No auto-suggestion
-                } else {
-                    // Normal currencies - show calculated value
-                    if (costBps < 0) {
-                        rateEl.textContent = `${costBps.toFixed(1)} bps`;
-                        rateEl.className = 'hedging-cost-rate negative';
-                    } else if (costBps > 0) {
-                        rateEl.textContent = `+${costBps.toFixed(1)} bps`;
-                        rateEl.className = 'hedging-cost-rate positive';
-                    } else {
-                        rateEl.textContent = '0 bps';
-                        rateEl.className = 'hedging-cost-rate neutral';
-                    }
-                    
-                    // Source badge
-                    sourceEl.textContent = data.is_live ? '★ Live' : 'Reference';
-                    sourceEl.className = 'hedging-cost-source' + (data.is_live ? ' live' : '');
-                    
-                    // Instrument info
-                    instrumentEl.textContent = `${data.instrument}`;
-                    
-                    // Explanation text
-                    explanationEl.textContent = getHedgingCostExplanation(baseCurrency, firstTarget, costBps, false);
-                }
-                
-                // Update methodology modal with real data
-                updateMethodologyModal(data);
-                
-            } catch (e) {
-                console.error('Failed to fetch hedging cost:', e);
-                document.getElementById('hedgingCostRate').textContent = '— bps';
-                document.getElementById('hedgingCostInstrument').textContent = 'Unable to fetch';
-                document.getElementById('hedgingCostExplanation').textContent = '';
-                currentHedgingCostData = null;
-                updateMethodologyModal(null);
-            }
-        }
-        
-        // Get explanation text for hedging cost
-        function getHedgingCostExplanation(baseCcy, targetCcy, costBps, requiresManual) {
-            // Currency-specific explanations
-            if (baseCcy === 'BRL' || targetCcy === 'BRL') {
-                return costBps >= 0 ? 'Convertibility premium • You receive' : 'Convertibility premium • You pay';
-            } else if (baseCcy === 'CNY' || targetCcy === 'CNY') {
-                return costBps >= 0 ? 'NDF basis • You receive' : 'NDF basis • You pay';
-            } else {
-                // G10 xccy basis
-                if (Math.abs(costBps) < 1) {
-                    return 'Xccy basis';
-                }
-                return costBps > 0 ? 'Xccy basis • You receive' : 'Xccy basis • You pay';
-            }
-        }
-        
-        // Update methodology modal with actual data
-        function updateMethodologyModal(data) {
-            const calcEl = document.getElementById('methodologyCalcValues');
-            const dataSourcesEl = document.getElementById('methodologyDataSources');
-            const currencyPairEl = document.getElementById('methodologyCurrencyPair');
-            
-            if (!data) {
-                if (calcEl) calcEl.innerHTML = '<span style="color: var(--text-muted);">Select currencies to see calculation</span>';
-                return;
-            }
-            
-            // Update currency pair
-            if (currencyPairEl) {
-                currencyPairEl.textContent = `${data.base_currency || 'USD'} → ${data.target_currency || 'BRL'}`;
-            }
-            
-            // Check what kind of live data we have
-            const hasBRLLiveData = data.is_live && (data.cupom_cambial !== undefined || 
-                (data.target_rate_name && data.target_rate_name.includes('Cupom')));
-            const hasFXForwardData = data.is_live && data.implied_rate !== undefined && data.actual_rate !== undefined;
-            const hasGenericLiveData = data.is_live && data.target_rate !== undefined && data.base_rate !== undefined;
-            
-            if (hasFXForwardData) {
-                // FX Forward implied basis calculation (for G10 currencies)
-                const benefit = data.cost_bps;
-                const benefitSign = benefit >= 0 ? '+' : '';
-                const benefitColor = benefit >= 0 ? 'var(--green)' : 'var(--red)';
-                const targetCcy = data.target_currency !== 'USD' ? data.target_currency : data.base_currency;
-                
-                if (calcEl) {
-                    calcEl.innerHTML = `
-                        <div style="margin-bottom: 4px; display: flex; align-items: center; gap: 8px;">
-                            <span style="background: var(--green-subtle); color: var(--green); padding: 2px 8px; border-radius: 4px; font-size: 0.7rem; font-weight: 600;">✓ LIVE DATA</span>
-                        </div>
-                        <div style="margin: 12px 0; padding: 10px; background: rgba(6, 182, 212, 0.1); border-radius: 6px; border-left: 3px solid var(--cyan);">
-                            <div style="font-size: 0.8rem; color: var(--cyan); margin-bottom: 4px; font-weight: 500;">
-                                FX Forward Implied Basis
-                            </div>
-                            <div style="font-size: 0.75rem; color: var(--text-muted);">
-                                Calculated from FX forward points vs. actual interbank rates
-                            </div>
-                        </div>
-                        <div style="margin-bottom: 8px; margin-top: 12px;">
-                            <span style="color: var(--text-muted);">Forward-Implied ${targetCcy} Rate:</span> 
-                            <span style="color: var(--cyan); font-weight: 600;">${data.implied_rate.toFixed(2)}%</span> p.a.
-                        </div>
-                        <div style="margin-bottom: 8px;">
-                            <span style="color: var(--text-muted);">Actual ${targetCcy} Interbank Rate:</span> 
-                            <span style="color: var(--cyan); font-weight: 600;">${data.actual_rate.toFixed(2)}%</span> p.a.
-                        </div>
-                        ${data.forward_points ? `
-                        <div style="margin-bottom: 8px;">
-                            <span style="color: var(--text-muted);">Forward Points:</span> 
-                            <span style="color: var(--text-secondary);">${data.forward_points.toFixed(1)} pips</span>
-                        </div>
-                        ` : ''}
-                        <div style="border-top: 1px dashed var(--border); padding-top: 8px; margin-top: 8px;">
-                            <span style="color: var(--text-muted);">Xccy Basis:</span> 
-                            (${data.implied_rate.toFixed(2)} − ${data.actual_rate.toFixed(2)}) × 100 = 
-                            <span style="color: ${benefitColor}; font-weight: 700;">${benefitSign}${benefit.toFixed(1)} bps</span>
-                        </div>
-                    `;
-                }
-                
-                if (dataSourcesEl) {
-                    dataSourcesEl.innerHTML = `
-                        <div class="methodology-data-source">
-                            <div class="methodology-data-source-name">FX Forward Points</div>
-                            <div class="methodology-data-source-value">
-                                Investing.com <span style="color: var(--cyan);">${data.forward_points ? data.forward_points.toFixed(1) + ' pips' : 'N/A'}</span>
-                                <span class="methodology-data-source-badge">LIVE</span>
-                            </div>
-                        </div>
-                        <div class="methodology-data-source">
-                            <div class="methodology-data-source-name">${targetCcy} Interbank Rate</div>
-                            <div class="methodology-data-source-value">
-                                ECB/BoE/FRED <span style="color: var(--cyan);">${data.actual_rate.toFixed(2)}%</span>
-                                <span class="methodology-data-source-badge">LIVE</span>
-                            </div>
-                        </div>
-                    `;
-                }
-            } else if (hasBRLLiveData || hasGenericLiveData) {
-                // BRL-style calculation (Cupom Cambial) or generic rate differential
-                const benefit = data.cost_bps;
-                const benefitSign = benefit >= 0 ? '+' : '';
-                const benefitColor = benefit >= 0 ? 'var(--green)' : 'var(--red)';
-                
-                // Handle both new format (target_rate/base_rate) and old BRL format (cupom_cambial/sofr)
-                const targetRate = data.target_rate ?? data.cupom_cambial;
-                const baseRate = data.base_rate ?? data.sofr;
-                const targetRateName = data.target_rate_name ?? 'Cupom Cambial';
-                const baseRateName = data.base_rate_name ?? 'SOFR';
-                const targetSource = data.target_rate_source ?? 'B3';
-                const baseSource = data.base_rate_source ?? 'FRED';
-                
-                if (calcEl) {
-                    calcEl.innerHTML = `
-                        <div style="margin-bottom: 4px; display: flex; align-items: center; gap: 8px;">
-                            <span style="background: var(--green-subtle); color: var(--green); padding: 2px 8px; border-radius: 4px; font-size: 0.7rem; font-weight: 600;">✓ LIVE DATA</span>
-                        </div>
-                        ${targetRateName.includes('Cupom') ? `
-                        <div style="margin: 12px 0; padding: 10px; background: rgba(6, 182, 212, 0.1); border-radius: 6px; border-left: 3px solid var(--cyan);">
-                            <div style="font-size: 0.8rem; color: var(--cyan); margin-bottom: 4px; font-weight: 500;">
-                                Cupom Cambial Method
-                            </div>
-                            <div style="font-size: 0.75rem; color: var(--text-muted);">
-                                Cupom Cambial is the implied USD rate in Brazil (from FX futures)
-                            </div>
-                        </div>
-                        ` : ''}
-                        <div style="margin-bottom: 8px; margin-top: 12px;">
-                            <span style="color: var(--text-muted);">${targetRateName} (${data.target_currency}):</span> 
-                            <span style="color: var(--cyan); font-weight: 600;">${targetRate.toFixed(2)}%</span> p.a.
-                        </div>
-                        <div style="margin-bottom: 8px;">
-                            <span style="color: var(--text-muted);">${baseRateName} (${data.base_currency}):</span> 
-                            <span style="color: var(--cyan); font-weight: 600;">${baseRate.toFixed(2)}%</span> p.a.
-                        </div>
-                        <div style="border-top: 1px dashed var(--border); padding-top: 8px; margin-top: 8px;">
-                            <span style="color: var(--text-muted);">Hedge Cost:</span> 
-                            (${targetRate.toFixed(2)} − ${baseRate.toFixed(2)}) × 100 = 
-                            <span style="color: ${benefitColor}; font-weight: 700;">${benefitSign}${benefit.toFixed(1)} bps</span>
-                        </div>
-                    `;
-                }
-                
-                // Update data sources to show actual values
-                if (dataSourcesEl) {
-                    dataSourcesEl.innerHTML = `
-                        <div class="methodology-data-source">
-                            <div class="methodology-data-source-name">${targetRateName}</div>
-                            <div class="methodology-data-source-value">
-                                ${targetSource} <span style="color: var(--cyan);">${targetRate.toFixed(2)}%</span>
-                                <span class="methodology-data-source-badge">LIVE</span>
-                            </div>
-                        </div>
-                        <div class="methodology-data-source">
-                            <div class="methodology-data-source-name">${baseRateName}</div>
-                            <div class="methodology-data-source-value">
-                                ${baseSource} <span style="color: var(--cyan);">${baseRate.toFixed(2)}%</span>
-                                <span class="methodology-data-source-badge">LIVE</span>
-                            </div>
-                        </div>
-                    `;
-                }
-            } else {
-                // Fallback/reference estimate data
-                const benefit = data.cost_bps;
-                const benefitSign = benefit >= 0 ? '+' : '';
-                const benefitColor = benefit >= 0 ? 'var(--green)' : 'var(--red)';
-                const typicalRange = data.typical_range || '';
-                const instrument = data.instrument || 'Cross-Currency Basis Swap';
-                
-                if (calcEl) {
-                    calcEl.innerHTML = `
-                        <div style="margin-bottom: 4px; display: flex; align-items: center; gap: 8px;">
-                            <span style="background: rgba(234, 179, 8, 0.2); color: var(--yellow); padding: 2px 8px; border-radius: 4px; font-size: 0.7rem; font-weight: 600;">⚠️ ESTIMATE</span>
-                        </div>
-                        <div style="margin: 12px 0; padding: 10px; background: rgba(234, 179, 8, 0.1); border-radius: 6px; border-left: 3px solid var(--yellow);">
-                            <div style="font-size: 0.8rem; color: var(--yellow); margin-bottom: 4px; font-weight: 500;">
-                                Reference Estimate
-                            </div>
-                            <div style="font-size: 0.75rem; color: var(--text-muted);">
-                                Live FX forward data unavailable. Using historical xccy basis averages.
-                            </div>
-                        </div>
-                        <div style="margin-bottom: 8px; margin-top: 12px;">
-                            <span style="color: var(--text-muted);">Currency Pair:</span> 
-                            ${data.base_currency || '—'} → ${data.target_currency || '—'}
-                        </div>
-                        <div style="margin-bottom: 8px;">
-                            <span style="color: var(--text-muted);">Tenor:</span> 
-                            ${data.tenor || 5}Y
-                        </div>
-                        <div style="margin-bottom: 8px;">
-                            <span style="color: var(--text-muted);">Instrument:</span> 
-                            ${instrument}
-                        </div>
-                        ${typicalRange ? `
-                        <div style="margin-bottom: 8px;">
-                            <span style="color: var(--text-muted);">Typical Range:</span> 
-                            <span style="color: var(--text-secondary);">${typicalRange}</span>
-                        </div>
-                        ` : ''}
-                        <div style="border-top: 1px dashed var(--border); padding-top: 8px; margin-top: 8px;">
-                            <span style="color: var(--text-muted);">Estimated Xccy Basis:</span> 
-                            <span style="color: ${benefitColor}; font-weight: 700;">${benefitSign}${benefit.toFixed(1)} bps</span>
-                        </div>
-                        <div style="margin-top: 8px; font-size: 0.75rem; color: var(--text-muted);">
-                            💡 For precise hedging, use manual override with your institution's rates
-                        </div>
-                    `;
-                }
-                
-                if (dataSourcesEl) {
-                    dataSourcesEl.innerHTML = `
-                        <div class="methodology-data-source">
-                            <div class="methodology-data-source-name">Data Source</div>
-                            <div class="methodology-data-source-value">
-                                ${data.source || 'Reference estimate'}
-                                <span class="methodology-data-source-badge" style="background: rgba(234, 179, 8, 0.2); color: var(--yellow);">ESTIMATE</span>
-                            </div>
-                        </div>
-                        <div class="methodology-data-source">
-                            <div class="methodology-data-source-name">Instrument</div>
-                            <div class="methodology-data-source-value">
-                                ${instrument}
-                            </div>
-                        </div>
-                        <div class="methodology-data-source">
-                            <div class="methodology-data-source-name">Notes</div>
-                            <div class="methodology-data-source-value" style="font-size: 0.7rem;">
-                                ${data.notes || 'Based on historical market averages'}
-                            </div>
-                        </div>
-                    `;
-                }
-            }
-        }
-        
-        // Clear all hedging cost selections
-        function clearHedgingCostSelection() {
-            useSuggestedCost = false;
-            document.getElementById('hedgingCostSuggested').classList.remove('applied');
-            document.getElementById('hedgingCostManual').classList.remove('applied');
-            document.getElementById('useSuggestedBtn').classList.remove('applied');
-            document.getElementById('applyManualBtn').classList.remove('applied');
-        }
-        
-        // Apply suggested cost
-        function applySuggestedCost() {
-            clearHedgingCostSelection();
-            useSuggestedCost = true;
-            document.getElementById('hedgingCostSuggested').classList.add('applied');
-            document.getElementById('useSuggestedBtn').classList.add('applied');
-            document.getElementById('manualHedgingCost').value = '';
-        }
-        
-        // Apply manual cost
-        function applyManualCost() {
-            const manualValue = document.getElementById('manualHedgingCost').value;
-            if (manualValue === '') {
-                // If empty, switch to suggested
-                applySuggestedCost();
-                return;
-            }
-            clearHedgingCostSelection();
-            useSuggestedCost = false;
-            document.getElementById('hedgingCostManual').classList.add('applied');
-            document.getElementById('applyManualBtn').classList.add('applied');
-        }
-        
-        // Use suggested button
-        document.getElementById('useSuggestedBtn').addEventListener('click', applySuggestedCost);
-        
-        // Apply manual button
-        document.getElementById('applyManualBtn').addEventListener('click', applyManualCost);
-        
-        // Manual input - apply on Enter
-        document.getElementById('manualHedgingCost').addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') {
-                applyManualCost();
-            }
-        });
-        
-        // Update hedging cost when currencies or tenor change
-        document.getElementById('baseCurrency').addEventListener('change', function() {
-            if (document.getElementById('includeHedgingCost').checked) {
-                updateHedgingCostSuggestion();
-                // Re-apply suggested if that was selected
-                if (useSuggestedCost) {
-                    applySuggestedCost();
-                }
-            }
-        });
-        
-        document.getElementById('tenor').addEventListener('change', function() {
-            if (document.getElementById('includeHedgingCost').checked) {
-                updateHedgingCostSuggestion();
-                // Re-apply suggested if that was selected
-                if (useSuggestedCost) {
-                    applySuggestedCost();
-                }
-            }
-        });
-        
-        // Check live status
-        async function checkStatus() {
-            try {
-                const res = await fetch(`${API_BASE}/config/status`);
-                if (res.ok) {
-                    const data = await res.json();
-                    const httpx = data.httpx_available;
-                    const fred = data.fred_configured && httpx;
-                    
-                    document.getElementById('dotBRL').className = 'dot' + (data.bcb_configured && httpx ? ' active' : '');
-                    document.getElementById('dotUSD').className = 'dot' + (fred ? ' active' : '');
-                    document.getElementById('dotEUR').className = 'dot' + (httpx ? ' active' : '');
-                    document.getElementById('dotGBP').className = 'dot' + (httpx ? ' active' : '');
-                    document.getElementById('dotCHF').className = 'dot' + (fred ? ' active' : '');
-                    document.getElementById('dotJPY').className = 'dot' + (fred ? ' active' : '');
-                    document.getElementById('dotCAD').className = 'dot' + (fred ? ' active' : '');
-                    document.getElementById('dotAUD').className = 'dot' + (fred ? ' active' : '');
-                    document.getElementById('dotARS').className = 'dot'; // Reference only
-                    document.getElementById('dotCNY').className = 'dot'; // Reference only
-                }
-            } catch (e) {
-                console.error('Status check failed:', e);
-            }
-        }
-        
-        // Load indexers
-        async function loadIndexers() {
-            const ccy = document.getElementById('baseCurrency').value;
-            const sel = document.getElementById('indexerKey');
-            
-            if (!ccy) {
-                sel.innerHTML = '<option value="">Select currency first...</option>';
-                return;
-            }
-            
-            sel.innerHTML = '<option value="">Loading...</option>';
-            
-            try {
-                const res = await fetch(`${API_BASE}/indexers/${ccy}`);
-                const data = await res.json();
-                
-                sel.innerHTML = '<option value="">Select indexer...</option>';
-                data.indexers.forEach(idx => {
-                    const opt = document.createElement('option');
-                    opt.value = idx.key;
-                    const isLive = idx.label && idx.label.includes('[Live]');
-                    const valueStr = (idx.value !== undefined && idx.value !== null) ? idx.value.toFixed(2) : '0.00';
-                    opt.textContent = `${(idx.label || 'Unknown').replace(' [Live]', '')} — ${valueStr}%${isLive ? ' ★' : ''}`;
-                    sel.appendChild(opt);
-                });
-            } catch (e) {
-                sel.innerHTML = '<option value="">Error loading</option>';
-            }
-        }
-        
-        document.getElementById('baseCurrency').addEventListener('change', loadIndexers);
-        
-        // Observer for target currency changes (for hedging cost update)
-        document.getElementById('targetsContainer').addEventListener('change', function(e) {
-            if (e.target.classList.contains('target-currency')) {
-                if (document.getElementById('includeHedgingCost').checked) {
-                    updateHedgingCostSuggestion();
-                }
-            }
-        });
-        
-        // Add target currency
-        document.getElementById('addTargetBtn').addEventListener('click', () => {
-            targetCounter++;
-            const container = document.getElementById('targetsContainer');
-            const baseCurrency = document.getElementById('baseCurrency').value;
-            
-            const newTarget = document.createElement('div');
-            newTarget.className = 'target-row';
-            newTarget.dataset.targetId = targetCounter;
-            newTarget.innerHTML = `
-                <span class="target-label">Target #${targetCounter}</span>
-                <div class="form-row">
-                    <label class="form-label">Target Currency</label>
-                    <div class="input-with-remove">
-                        <div class="select-wrapper">
-                            <select class="form-select target-currency" required>
-                                <option value="">Select currency...</option>
-                                <option value="BRL" ${baseCurrency === 'BRL' ? 'disabled' : ''}>BRL — Brazilian Real</option>
-                                <option value="USD" ${baseCurrency === 'USD' ? 'disabled' : ''}>USD — US Dollar</option>
-                                <option value="EUR" ${baseCurrency === 'EUR' ? 'disabled' : ''}>EUR — Euro</option>
-                                <option value="GBP" ${baseCurrency === 'GBP' ? 'disabled' : ''}>GBP — British Pound</option>
-                                <option value="CHF" ${baseCurrency === 'CHF' ? 'disabled' : ''}>CHF — Swiss Franc</option>
-                                <option value="JPY" ${baseCurrency === 'JPY' ? 'disabled' : ''}>JPY — Japanese Yen</option>
-                                <option value="CNY" ${baseCurrency === 'CNY' ? 'disabled' : ''}>CNY — Chinese Yuan</option>
-                                <option value="CAD" ${baseCurrency === 'CAD' ? 'disabled' : ''}>CAD — Canadian Dollar</option>
-                                <option value="AUD" ${baseCurrency === 'AUD' ? 'disabled' : ''}>AUD — Australian Dollar</option>
-                            </select>
-                        </div>
-                        <button type="button" class="btn-remove" onclick="removeTarget(${targetCounter})">✕</button>
-                    </div>
-                </div>
-            `;
-            container.appendChild(newTarget);
-        });
-        
-        function removeTarget(id) {
-            const target = document.querySelector(`.target-row[data-target-id="${id}"]`);
-            if (target) target.remove();
-        }
-        
-        // Chart curve management
-        document.getElementById('addCurveBtn').addEventListener('click', () => {
-            document.getElementById('additionalCurvesContainer').style.display = 'block';
-        });
-        
-        document.getElementById('cancelAddCurve').addEventListener('click', () => {
-            document.getElementById('additionalCurvesContainer').style.display = 'none';
-            document.getElementById('additionalCurveSelect').value = '';
-        });
-        
-        document.getElementById('confirmAddCurve').addEventListener('click', async () => {
-            const select = document.getElementById('additionalCurveSelect');
-            const currency = select.value;
-            
-            if (!currency) return;
-            
-            // Check if already added
-            if (additionalCurves.includes(currency)) {
-                alert(`${currency} is already on the chart`);
-                return;
-            }
-            
-            additionalCurves.push(currency);
-            document.getElementById('additionalCurvesContainer').style.display = 'none';
-            select.value = '';
-            
-            // Refresh chart if we have results
-            if (calculatedResults.length > 0) {
-                await updateChart();
-            }
-        });
-        
-        function removeAdditionalCurve(currency) {
-            additionalCurves = additionalCurves.filter(c => c !== currency);
-            if (calculatedResults.length > 0) {
-                updateChart();
-            }
-        }
-        
-        // Fetch yield curve data
-        async function fetchCurve(currency) {
-            try {
-                const res = await fetch(`${API_BASE}/curves/${currency}`);
-                if (res.ok) {
-                    return await res.json();
-                }
-            } catch (e) {
-                console.error(`Failed to fetch ${currency} curve:`, e);
-            }
-            return null;
-        }
-        
-        // Update chart with multiple curves
-        async function updateChart() {
-            const baseCcy = document.getElementById('baseCurrency').value;
-            const selectedTenor = parseFloat(document.getElementById('tenor').value);
-            
-            // Get all currencies to display
-            const targetCurrencies = calculatedResults.map(r => r.target_currency);
-            const allCurrencies = [baseCcy, ...targetCurrencies, ...additionalCurves];
-            const uniqueCurrencies = [...new Set(allCurrencies)];
-            
-            // Fetch all curves
-            const curves = {};
-            for (const ccy of uniqueCurrencies) {
-                curves[ccy] = await fetchCurve(ccy);
-            }
-            
-            // Update legend
-            const legendContainer = document.getElementById('chartLegend');
-            legendContainer.innerHTML = '';
-            
-            uniqueCurrencies.forEach((ccy, idx) => {
-                const color = curveColors[idx % curveColors.length];
-                const isAdditional = additionalCurves.includes(ccy);
-                const legendItem = document.createElement('div');
-                legendItem.className = 'legend-item' + (isAdditional ? ' removable' : '');
-                legendItem.innerHTML = `
-                    <span class="legend-dot" style="background: ${color};"></span>
-                    <span>${ccy}</span>
-                `;
-                if (isAdditional) {
-                    legendItem.onclick = () => removeAdditionalCurve(ccy);
-                    legendItem.title = 'Click to remove';
-                }
-                legendContainer.appendChild(legendItem);
-            });
-            
-            // Add tenor indicator to legend
-            const tenorLegend = document.createElement('div');
-            tenorLegend.className = 'legend-item';
-            tenorLegend.innerHTML = `
-                <span class="legend-dot" style="background: #eab308; width: 8px; height: 8px;"></span>
-                <span>Tenor (${selectedTenor}Y)</span>
-            `;
-            legendContainer.appendChild(tenorLegend);
-            
-            // Build chart datasets
-            const ctx = document.getElementById('yieldCurveChart').getContext('2d');
-            
-            if (yieldChart) {
-                yieldChart.destroy();
-            }
-            
-            const tenors = [1, 2, 3, 5, 7, 10, 15, 20, 30];
-            const datasets = [];
-            
-            uniqueCurrencies.forEach((ccy, idx) => {
-                const curveData = curves[ccy];
-                if (!curveData) return;
-                
-                const color = curveColors[idx % curveColors.length];
-                const rates = tenors.map(t => {
-                    const point = curveData.curve.find(p => p.tenor === t);
-                    return point ? point.rate : null;
-                });
-                
-                datasets.push({
-                    label: ccy,
-                    data: rates,
-                    borderColor: color,
-                    backgroundColor: color + '20',
-                    borderWidth: 2,
-                    tension: 0.4,
-                    fill: false,
-                    pointRadius: 3,
-                    pointBackgroundColor: color,
-                    pointBorderColor: color
-                });
-            });
-            
-            // Add tenor marker
-            const tenorIndex = tenors.findIndex(t => Math.abs(t - selectedTenor) < 0.5);
-            if (tenorIndex >= 0) {
-                datasets.push({
-                    label: 'Selected Tenor',
-                    data: tenors.map((t, i) => i === tenorIndex ? datasets[0]?.data[i] || 0 : null),
-                    borderColor: '#eab308',
-                    backgroundColor: '#eab308',
-                    borderWidth: 0,
-                    pointRadius: tenors.map((t, i) => i === tenorIndex ? 10 : 0),
-                    pointBackgroundColor: '#eab308',
-                    pointBorderColor: '#0a0a0b',
-                    pointBorderWidth: 3,
-                    showLine: false
-                });
-            }
-            
-            yieldChart = new Chart(ctx, {
-                type: 'line',
-                data: {
-                    labels: tenors.map(t => t + 'Y'),
-                    datasets: datasets
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    interaction: {
-                        intersect: false,
-                        mode: 'index'
-                    },
-                    plugins: {
-                        legend: { display: false },
-                        tooltip: {
-                            backgroundColor: '#1a1a1d',
-                            titleColor: '#fafafa',
-                            bodyColor: '#a1a1aa',
-                            borderColor: '#2a2a2e',
-                            borderWidth: 1,
-                            padding: 12,
-                            displayColors: true,
-                            callbacks: {
-                                label: function(context) {
-                                    if (context.dataset.label === 'Selected Tenor') return null;
-                                    return `${context.dataset.label}: ${context.parsed.y?.toFixed(2) || '—'}%`;
-                                }
-                            }
-                        }
-                    },
-                    scales: {
-                        x: {
-                            grid: { color: 'rgba(42, 42, 46, 0.5)', drawBorder: false },
-                            ticks: { color: '#71717a', font: { family: "'JetBrains Mono', monospace", size: 11 } }
-                        },
-                        y: {
-                            grid: { color: 'rgba(42, 42, 46, 0.5)', drawBorder: false },
-                            ticks: {
-                                color: '#71717a',
-                                font: { family: "'JetBrains Mono', monospace", size: 11 },
-                                callback: function(value) { return value.toFixed(1) + '%'; }
-                            }
-                        }
-                    }
-                }
-            });
-        }
-        
-        // Calculate for all targets
-        document.getElementById('calculateBtn').addEventListener('click', async () => {
-            const btn = document.getElementById('calculateBtn');
-            const errorBanner = document.getElementById('errorBanner');
-            const resultsCard = document.getElementById('resultsCard');
-            
-            errorBanner.classList.remove('show');
-            
-            const baseCurrency = document.getElementById('baseCurrency').value;
-            const baseIndexer = document.getElementById('indexerKey').value;
-            const tenor = parseFloat(document.getElementById('tenor').value);
-            const spread = parseFloat(document.getElementById('spread').value);
-            
-            // Hedging cost parameters
-            const includeHedgingCost = document.getElementById('includeHedgingCost').checked;
-            const manualCostValue = document.getElementById('manualHedgingCost').value;
-            let hedgingCostBps = null;
-            
-            if (includeHedgingCost && !useSuggestedCost && manualCostValue !== '') {
-                hedgingCostBps = parseFloat(manualCostValue);
-            }
-            // If using suggested, leave null and backend will calculate
-            
-            // Get all target currencies
-            const targetSelects = document.querySelectorAll('.target-currency');
-            const targetCurrencies = [];
-            targetSelects.forEach(sel => {
-                if (sel.value && sel.value !== baseCurrency) {
-                    targetCurrencies.push(sel.value);
-                }
-            });
-            
-            if (!baseCurrency || !baseIndexer) {
-                document.getElementById('errorText').textContent = 'Please select base currency and indexer';
-                errorBanner.classList.add('show');
-                return;
-            }
-            
-            if (targetCurrencies.length === 0) {
-                document.getElementById('errorText').textContent = 'Please select at least one target currency';
-                errorBanner.classList.add('show');
-                return;
-            }
-            
-            btn.disabled = true;
-            btn.innerHTML = '<span class="spinner">◐</span> Calculating...';
-            
-            try {
-                calculatedResults = [];
-                let firstResult = null;
-                
-                // Calculate for each target
-                for (const targetCurrency of targetCurrencies) {
-                    const requestBody = {
-                        base_currency: baseCurrency,
-                        base_indexer_key: baseIndexer,
-                        target_currency: targetCurrency,
-                        tenor: tenor,
-                        spread: spread,
-                        include_hedging_cost: includeHedgingCost
-                    };
-                    
-                    // Add manual hedging cost if specified
-                    if (hedgingCostBps !== null) {
-                        requestBody.hedging_cost_bps = hedgingCostBps;
-                    }
-                    
-                    const res = await fetch(`${API_BASE}/calculate/hedged-return`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(requestBody)
-                    });
-                    
-                    if (!res.ok) {
-                        const err = await res.json();
-                        throw new Error(`${targetCurrency}: ${err.detail || 'Calculation failed'}`);
-                    }
-                    
-                    const data = await res.json();
-                    data.target_currency = targetCurrency;
-                    calculatedResults.push(data);
-                    
-                    if (!firstResult) firstResult = data;
-                }
-                
-                // Update header info
-                document.getElementById('summaryBaseCurrency').textContent = baseCurrency;
-                document.getElementById('summaryTargetCurrency').textContent = targetCurrencies.join(', ');
-                document.getElementById('summaryTenor').textContent = tenor + 'Y';
-                document.getElementById('resultDate').textContent = firstResult.as_of_date;
-                
-                // Check if any result has hedging cost
-                const anyHasHedgingCost = calculatedResults.some(r => r.hedging_cost_bps !== null && r.hedging_cost_bps !== undefined);
-                
-                // === BLOCK 1: Annual Returns (p.a.) ===
-                const annualHead = document.getElementById('annualResultsHead');
-                const annualBody = document.getElementById('annualResultsBody');
-                
-                if (anyHasHedgingCost) {
-                    annualHead.innerHTML = `
-                        <tr>
-                            <th>Target</th>
-                            <th>Base Rate p.a.</th>
-                            <th>Hedged Return p.a.</th>
-                            <th>Hedge Cost p.a.</th>
-                            <th>Net Return p.a.</th>
-                        </tr>
-                    `;
-                } else {
-                    annualHead.innerHTML = `
-                        <tr>
-                            <th>Target</th>
-                            <th>Base Rate p.a.</th>
-                            <th>Hedged Return p.a.</th>
-                            <th>Net Return p.a.</th>
-                        </tr>
-                    `;
-                }
-                
-                annualBody.innerHTML = '';
-                calculatedResults.forEach(result => {
-                    const hasHedgingCost = result.hedging_cost_bps !== null && result.hedging_cost_bps !== undefined;
-                    const row = document.createElement('tr');
-                    
-                    if (anyHasHedgingCost) {
-                        const hedgeCostPct = hasHedgingCost ? (result.hedging_cost_bps / 100) : 0;
-                        const hedgeCostClass = hasHedgingCost ? (result.hedging_cost_bps >= 0 ? 'positive' : 'negative') : '';
-                        const hedgeCostDisplay = hasHedgingCost 
-                            ? `${result.hedging_cost_bps >= 0 ? '+' : ''}${result.hedging_cost_bps.toFixed(0)} bps`
-                            : '—';
-                        
-                        row.innerHTML = `
-                            <td class="currency-cell">${result.target_currency}</td>
-                            <td class="rate-cell">${result.all_in_base_pp.toFixed(2)}%</td>
-                            <td class="rate-cell">${result.usd_equiv_pp.toFixed(2)}%</td>
-                            <td class="hedge-cost-cell ${hedgeCostClass}">${hedgeCostDisplay}</td>
-                            <td class="result-cell">${result.hedged_return_pp.toFixed(2)}%</td>
-                        `;
-                    } else {
-                        row.innerHTML = `
-                            <td class="currency-cell">${result.target_currency}</td>
-                            <td class="rate-cell">${result.all_in_base_pp.toFixed(2)}%</td>
-                            <td class="rate-cell">${result.usd_equiv_pp.toFixed(2)}%</td>
-                            <td class="result-cell">${result.hedged_return_pp.toFixed(2)}%</td>
-                        `;
-                    }
-                    annualBody.appendChild(row);
-                });
-                
-                // === BLOCK 2: Full Tenor Returns ===
-                const tenorHead = document.getElementById('tenorResultsHead');
-                const tenorBody = document.getElementById('tenorResultsBody');
-                
-                if (anyHasHedgingCost) {
-                    tenorHead.innerHTML = `
-                        <tr>
-                            <th>Target</th>
-                            <th>Base Total (${tenor}Y)</th>
-                            <th>Hedged Total</th>
-                            <th>Hedge Cost Impact</th>
-                            <th>Net Total (${tenor}Y)</th>
-                        </tr>
-                    `;
-                } else {
-                    tenorHead.innerHTML = `
-                        <tr>
-                            <th>Target</th>
-                            <th>Base Total (${tenor}Y)</th>
-                            <th>Hedged Total (${tenor}Y)</th>
-                            <th>Net Total (${tenor}Y)</th>
-                        </tr>
-                    `;
-                }
-                
-                tenorBody.innerHTML = '';
-                calculatedResults.forEach(result => {
-                    const hasHedgingCost = result.hedging_cost_bps !== null && result.hedging_cost_bps !== undefined;
-                    const row = document.createElement('tr');
-                    
-                    // Calculate compounded returns
-                    const baseTotal = result.total_return_base_pp;
-                    
-                    // Hedged total WITHOUT hedge cost (compound usd_equiv_pp)
-                    const hedgedTotalBeforeCost = (Math.pow(1 + result.usd_equiv_pp / 100, tenor) - 1) * 100;
-                    
-                    // Net total WITH hedge cost (compound hedged_return_pp)
-                    const netTotal = result.total_return_target_pp;
-                    
-                    // Hedge cost impact = difference between hedged total and net total
-                    const hedgeCostImpact = hasHedgingCost ? (netTotal - hedgedTotalBeforeCost) : 0;
-                    
-                    if (anyHasHedgingCost) {
-                        const hedgeCostClass = hasHedgingCost ? (hedgeCostImpact >= 0 ? 'positive' : 'negative') : '';
-                        const hedgeCostDisplay = hasHedgingCost 
-                            ? `${hedgeCostImpact >= 0 ? '+' : ''}${hedgeCostImpact.toFixed(2)}%`
-                            : '—';
-                        
-                        row.innerHTML = `
-                            <td class="currency-cell">${result.target_currency}</td>
-                            <td class="rate-cell">${baseTotal.toFixed(2)}%</td>
-                            <td class="rate-cell">${hedgedTotalBeforeCost.toFixed(2)}%</td>
-                            <td class="hedge-cost-cell ${hedgeCostClass}">${hedgeCostDisplay}</td>
-                            <td class="result-cell">${netTotal.toFixed(2)}%</td>
-                        `;
-                    } else {
-                        row.innerHTML = `
-                            <td class="currency-cell">${result.target_currency}</td>
-                            <td class="rate-cell">${baseTotal.toFixed(2)}%</td>
-                            <td class="rate-cell">${hedgedTotalBeforeCost.toFixed(2)}%</td>
-                            <td class="result-cell">${netTotal.toFixed(2)}%</td>
-                        `;
-                    }
-                    tenorBody.appendChild(row);
-                });
-                
-                // Update assumptions (from first result)
-                const assumptionsList = document.getElementById('assumptionsList');
-                assumptionsList.innerHTML = '';
-                
-                firstResult.assumptions.forEach(a => {
-                    const isLive = a.source_name === 'Live';
-                    const isHedgingCost = a.name.includes('Hedging Cost');
-                    const row = document.createElement('div');
-                    row.className = 'assumption-row' + (isHedgingCost ? ' hedging-cost-assumption' : '');
-                    
-                    // Format value - for hedging cost show in bps and with +/- sign
-                    let valueDisplay = '—';
-                    if (a.value_pp !== null) {
-                        if (isHedgingCost) {
-                            // Convert back to bps for display and show +/- sign
-                            const bpsValue = a.value_pp * 100;
-                            const sign = bpsValue >= 0 ? '+' : '';
-                            valueDisplay = `${sign}${bpsValue.toFixed(1)} bps`;
-                        } else {
-                            valueDisplay = a.value_pp.toFixed(4) + '%';
-                        }
-                    }
-                    
-                    row.innerHTML = `
-                        <span class="assumption-name">
-                            ${a.name.replace(' [Live]', '')}
-                            ${isLive ? '<span class="live-tag">Live</span>' : ''}
-                        </span>
-                        <span class="assumption-source">${a.source_name}</span>
-                        <span class="assumption-value ${isHedgingCost ? (a.value_pp >= 0 ? 'positive' : 'negative') : ''}">${valueDisplay}</span>
-                    `;
-                    assumptionsList.appendChild(row);
-                });
-                
-                // Add final net return line if hedging cost was applied
-                const anyHasHedgingCostAssumptions = firstResult.hedging_cost_bps !== null && firstResult.hedging_cost_bps !== undefined;
-                if (anyHasHedgingCostAssumptions) {
-                    const finalRow = document.createElement('div');
-                    finalRow.className = 'assumption-row assumption-total';
-                    finalRow.innerHTML = `
-                        <span class="assumption-name">Net Hedged Return</span>
-                        <span class="assumption-source">Calculated</span>
-                        <span class="assumption-value highlight">${firstResult.hedged_return_pp.toFixed(4)}%</span>
-                    `;
-                    assumptionsList.appendChild(finalRow);
-                }
-                
-                // Status messages
-                const statusMessages = document.getElementById('statusMessages');
-                statusMessages.innerHTML = '';
-                
-                firstResult.warnings.forEach(w => {
-                    const div = document.createElement('div');
-                    const isWarning = w.includes('⚠️');
-                    div.className = 'status-message ' + (isWarning ? 'warning' : 'success');
-                    div.innerHTML = w;
-                    statusMessages.appendChild(div);
-                });
-                
-                // Update chart
-                await updateChart();
-                
-                // Update analysis tools
-                updateAnalysisSection();
-                
-                resultsCard.classList.add('show');
-                resultsCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-                
-            } catch (err) {
-                document.getElementById('errorText').textContent = err.message;
-                errorBanner.classList.add('show');
-                resultsCard.classList.remove('show');
-            } finally {
-                btn.disabled = false;
-                btn.innerHTML = 'Calculate Hedged Returns';
-            }
-        });
-        
-        // Enter key submit
-        document.querySelectorAll('.form-input, .form-select').forEach(el => {
-            el.addEventListener('keypress', (e) => {
-                if (e.key === 'Enter') {
-                    document.getElementById('calculateBtn').click();
-                }
-            });
-        });
-        
-        // Register Service Worker for PWA
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('/static/sw.js')
-                    .then(registration => {
-                        console.log('✅ Service Worker registered:', registration.scope);
-                    })
-                    .catch(error => {
-                        console.log('❌ Service Worker registration failed:', error);
-                    });
-            });
-        }
-        
-        // iOS Install Prompt (for Safari)
-        function isIOS() {
-            return /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-        }
-        
-        function isInStandaloneMode() {
-            return ('standalone' in window.navigator) && window.navigator.standalone;
-        }
-        
-        // Show iOS install prompt if needed
-        if (isIOS() && !isInStandaloneMode()) {
-            // Could show a custom banner here prompting "Add to Home Screen"
-            console.log('ℹ️ iOS detected - app can be installed via Share > Add to Home Screen');
-        }
-        
-        // ============================================
-        // ANALYSIS TOOLS
-        // ============================================
-        
-        let tenorAnalysisChart = null;
-        
-        // Tab switching
-        document.querySelectorAll('.analysis-tab').forEach(tab => {
-            tab.addEventListener('click', function() {
-                // Update active tab
-                document.querySelectorAll('.analysis-tab').forEach(t => t.classList.remove('active'));
-                this.classList.add('active');
-                
-                // Update active content
-                const tabName = this.dataset.tab;
-                document.querySelectorAll('.analysis-content').forEach(c => c.classList.remove('active'));
-                document.getElementById(tabName + 'Content').classList.add('active');
-                
-                // Initialize charts if needed
-                if (tabName === 'history' && calculatedResults.length > 0) {
-                    updateTenorAnalysisChart();
-                }
-            });
-        });
-        
-        // Main function to update all analysis sections
-        function updateAnalysisSection() {
-            if (calculatedResults.length === 0) {
-                document.getElementById('analysisSection').style.display = 'none';
-                return;
-            }
-            
-            document.getElementById('analysisSection').style.display = 'block';
-            
-            updateCompareCards();
-            updateBreakevenAnalysis();
-            updateTenorAnalysisChart();
-        }
-        
-        // Compare Mode - Side by side comparison
-        function updateCompareCards() {
-            const grid = document.getElementById('compareGrid');
-            grid.innerHTML = '';
-            
-            if (calculatedResults.length === 0) return;
-            
-            const baseCurrency = document.getElementById('baseCurrency').value;
-            const tenor = parseFloat(document.getElementById('tenor').value) || 5;
-            
-            // Find the best result (highest net return)
-            let bestIndex = 0;
-            let bestReturn = -Infinity;
-            calculatedResults.forEach((result, index) => {
-                if (result.hedged_return_pp > bestReturn) {
-                    bestReturn = result.hedged_return_pp;
-                    bestIndex = index;
-                }
-            });
-            
-            calculatedResults.forEach((result, index) => {
-                const hasHedgingCost = result.hedging_cost_bps !== null && result.hedging_cost_bps !== undefined;
-                const hedgeCostPct = hasHedgingCost ? (result.hedging_cost_bps / 100) : 0;
-                const isBest = index === bestIndex && calculatedResults.length > 1;
-                
-                const card = document.createElement('div');
-                card.className = 'compare-card' + (isBest ? ' best' : '');
-                
-                // Calculate pickup vs base
-                const pickup = result.hedged_return_pp - result.all_in_base_pp;
-                const pickupClass = pickup >= 0 ? 'positive' : 'negative';
-                const pickupSign = pickup >= 0 ? '+' : '';
-                
-                card.innerHTML = `
-                    <div class="compare-card-header">
-                        <span class="compare-card-title">${result.target_currency}</span>
-                        <span class="compare-card-pair">${baseCurrency} → ${result.target_currency}</span>
-                    </div>
-                    
-                    <div class="compare-metric">
-                        <span class="compare-metric-label">Base Rate (${baseCurrency})</span>
-                        <span class="compare-metric-value neutral">${result.all_in_base_pp.toFixed(2)}%</span>
-                    </div>
-                    
-                    <div class="compare-metric">
-                        <span class="compare-metric-label">Hedged Return (pre-cost)</span>
-                        <span class="compare-metric-value neutral">${result.usd_equiv_pp.toFixed(2)}%</span>
-                    </div>
-                    
-                    ${hasHedgingCost ? `
-                    <div class="compare-metric">
-                        <span class="compare-metric-label">Hedge Cost</span>
-                        <span class="compare-metric-value ${result.hedging_cost_bps >= 0 ? 'positive' : 'negative'}">
-                            ${result.hedging_cost_bps >= 0 ? '+' : ''}${result.hedging_cost_bps.toFixed(0)} bps
-                        </span>
-                    </div>
-                    ` : ''}
-                    
-                    <div class="compare-metric">
-                        <span class="compare-metric-label">Pickup vs Base</span>
-                        <span class="compare-metric-value ${pickupClass}">${pickupSign}${pickup.toFixed(2)}%</span>
-                    </div>
-                    
-                    <div class="compare-net-return">
-                        <div class="compare-net-label">Net Hedged Return (p.a.)</div>
-                        <div class="compare-net-value ${result.hedged_return_pp >= result.all_in_base_pp ? 'positive' : 'negative'}">
-                            ${result.hedged_return_pp.toFixed(2)}%
-                        </div>
-                    </div>
-                `;
-                
-                grid.appendChild(card);
-            });
-        }
-        
-        // Breakeven Analysis
-        function updateBreakevenAnalysis() {
-            const result = calculatedResults[0];
-            if (!result) return;
-            
-            const hasHedgingCost = result.hedging_cost_bps !== null && result.hedging_cost_bps !== undefined;
-            const currentHedgeCost = hasHedgingCost ? result.hedging_cost_bps : 0;
-            
-            // The hedged return BEFORE applying hedge cost
-            const hedgedReturnPreCost = result.usd_equiv_pp;
-            // The base return (what you'd get without hedging)
-            const baseReturn = result.all_in_base_pp;
-            
-            // Breakeven hedge cost = the cost at which hedged_return_net equals base_return
-            // hedged_return_net = hedged_return_pre_cost + hedge_cost_pct
-            // At breakeven: hedged_return_pre_cost + breakeven_cost_pct = base_return
-            // So: breakeven_cost_pct = base_return - hedged_return_pre_cost
-            // In bps: breakeven_cost_bps = (base_return - hedged_return_pre_cost) * 100
-            const breakevenCostBps = (baseReturn - hedgedReturnPreCost) * 100;
-            
-            // Safety margin = difference between current cost and breakeven
-            // If current cost is BETTER than breakeven (higher/less negative), margin is positive
-            const safetyMarginBps = currentHedgeCost - breakevenCostBps;
-            
-            // Update metrics display
-            const currentEl = document.getElementById('currentHedgeCostMetric');
-            currentEl.textContent = `${currentHedgeCost >= 0 ? '+' : ''}${currentHedgeCost.toFixed(0)} bps`;
-            // Color based on whether cost is helping (positive) or hurting (negative)
-            if (currentHedgeCost > 0) {
-                currentEl.className = 'breakeven-metric-value good';
-            } else if (currentHedgeCost > -100) {
-                currentEl.className = 'breakeven-metric-value warning';
-            } else {
-                currentEl.className = 'breakeven-metric-value danger';
-            }
-            
-            const breakevenEl = document.getElementById('breakevenCostMetric');
-            breakevenEl.textContent = `${breakevenCostBps >= 0 ? '+' : ''}${breakevenCostBps.toFixed(0)} bps`;
-            breakevenEl.className = 'breakeven-metric-value'; // Neutral color for reference point
-            
-            const marginEl = document.getElementById('cushionMetric');
-            marginEl.textContent = `${safetyMarginBps >= 0 ? '+' : ''}${safetyMarginBps.toFixed(0)} bps`;
-            marginEl.className = 'breakeven-metric-value ' + (safetyMarginBps > 100 ? 'good' : safetyMarginBps > 0 ? 'warning' : 'danger');
-            
-            // Update verdict
-            const verdictEl = document.getElementById('breakevenVerdict');
-            const verdictTextEl = document.getElementById('breakevenVerdictText');
-            
-            if (safetyMarginBps > 100) {
-                verdictEl.className = 'breakeven-verdict favorable';
-                verdictTextEl.innerHTML = `
-                    <strong>Trade is FAVORABLE</strong><br>
-                    <span style="font-size: 0.85rem; opacity: 0.9;">
-                        You have ${safetyMarginBps.toFixed(0)} bps of cushion. Hedge costs would need to worsen by this amount before the trade breaks even.
-                    </span>
-                `;
-            } else if (safetyMarginBps > 0) {
-                verdictEl.className = 'breakeven-verdict marginal';
-                verdictTextEl.innerHTML = `
-                    <strong>Trade is MARGINAL</strong><br>
-                    <span style="font-size: 0.85rem; opacity: 0.9;">
-                        Only ${safetyMarginBps.toFixed(0)} bps margin before breakeven. Consider if the pickup justifies the risk.
-                    </span>
-                `;
-            } else {
-                verdictEl.className = 'breakeven-verdict unfavorable';
-                verdictTextEl.innerHTML = `
-                    <strong>Trade is UNDERWATER</strong><br>
-                    <span style="font-size: 0.85rem; opacity: 0.9;">
-                        Current hedge cost exceeds breakeven by ${Math.abs(safetyMarginBps).toFixed(0)} bps. The hedged return is worse than staying in base currency.
-                    </span>
-                `;
-            }
-        }
-        
-        // Tenor Analysis Chart
-        async function updateTenorAnalysisChart() {
-            const baseCurrency = document.getElementById('baseCurrency').value;
-            const targetRows = document.querySelectorAll('.target-currency');
-            const targetCurrency = targetRows.length > 0 ? targetRows[0].value : '';
-            
-            if (!baseCurrency || !targetCurrency) return;
-            
-            // Fetch hedge costs for different tenors
-            const tenors = [1, 2, 3, 5, 7, 10];
-            const hedgeCosts = [];
-            
-            for (const t of tenors) {
-                try {
-                    const res = await fetch(`${API_BASE}/hedging-cost/${baseCurrency}/${targetCurrency}?tenor=${t}`);
-                    const data = await res.json();
-                    hedgeCosts.push(data.cost_bps);
-                } catch (e) {
-                    hedgeCosts.push(null);
-                }
-            }
-            
-            const ctx = document.getElementById('tenorAnalysisChart').getContext('2d');
-            
-            if (tenorAnalysisChart) {
-                tenorAnalysisChart.destroy();
-            }
-            
-            tenorAnalysisChart = new Chart(ctx, {
-                type: 'line',
-                data: {
-                    labels: tenors.map(t => t + 'Y'),
-                    datasets: [{
-                        label: `${baseCurrency} → ${targetCurrency} Hedge Cost`,
-                        data: hedgeCosts,
-                        borderColor: '#22c55e',
-                        backgroundColor: 'rgba(34, 197, 94, 0.1)',
-                        fill: true,
-                        tension: 0.3,
-                        pointRadius: 6,
-                        pointHoverRadius: 8,
-                        pointBackgroundColor: '#22c55e',
-                        pointBorderColor: '#0a0a0b',
-                        pointBorderWidth: 2
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: {
-                            display: true,
-                            position: 'top',
-                            labels: {
-                                color: '#a1a1aa',
-                                font: { family: 'Outfit', size: 12 }
-                            }
-                        },
-                        tooltip: {
-                            backgroundColor: '#1a1a1d',
-                            titleColor: '#fafafa',
-                            bodyColor: '#a1a1aa',
-                            borderColor: '#2a2a2e',
-                            borderWidth: 1,
-                            padding: 12,
-                            callbacks: {
-                                label: function(context) {
-                                    const val = context.parsed.y;
-                                    return `Hedge Cost: ${val >= 0 ? '+' : ''}${val?.toFixed(0) || '—'} bps`;
-                                }
-                            }
-                        }
-                    },
-                    scales: {
-                        x: {
-                            grid: { color: '#2a2a2e' },
-                            ticks: { color: '#71717a', font: { family: 'Outfit' } },
-                            title: {
-                                display: true,
-                                text: 'Tenor',
-                                color: '#71717a'
-                            }
-                        },
-                        y: {
-                            grid: { color: '#2a2a2e' },
-                            ticks: { 
-                                color: '#71717a', 
-                                font: { family: 'JetBrains Mono' },
-                                callback: function(value) { return value + ' bps'; }
-                            },
-                            title: {
-                                display: true,
-                                text: 'Hedge Cost (bps)',
-                                color: '#71717a'
-                            }
-                        }
-                    }
-                }
-            });
-        }
-        
-        // Init
-        checkStatus();
-    </script>
+@app.get("/api/health", tags=["Info"])
+def health_check():
+    return {"status": "healthy", "timestamp": datetime.now().isoformat()}
+
+@app.get("/api/config/status", tags=["Info"])
+def config_status():
+    return {
+        "bcb_configured": True,
+        "fred_configured": bool(config.FRED_API_KEY),
+        "ecb_configured": True,
+        "boe_configured": True,
+        "httpx_available": HTTPX_AVAILABLE
+    }
+
+@app.get("/api/hedging-cost/{base_currency}/{target_currency}", tags=["Reference Data"])
+async def get_hedging_cost_endpoint(base_currency: str, target_currency: str, tenor: float = 5):
+    """
+    Get hedging cost (cross-currency basis or NDF cost) for a currency pair.
     
-    <!-- Hedge Cost Methodology Modal -->
-    <div class="methodology-modal" id="methodologyModal">
-        <div class="methodology-content">
-            <div class="methodology-header">
-                <span class="methodology-title">
-                    <span class="methodology-title-icon">📊</span>
-                    Hedge Cost Methodology
-                    <span id="methodologyCurrencyPair" style="font-size: 0.85rem; color: var(--cyan); margin-left: 8px;">—</span>
-                </span>
-                <button type="button" class="methodology-close" id="closeMethodologyBtn">×</button>
-            </div>
-            
-            <div class="methodology-body">
-                <div class="methodology-section">
-                    <div class="methodology-section-title">Current Calculation</div>
-                    <div class="methodology-example">
-                        <div class="methodology-example-title">Live Market Data</div>
-                        <div class="methodology-example-calc" id="methodologyCalcValues">
-                            <span style="color: var(--text-muted);">Select currencies to see calculation</span>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="methodology-section">
-                    <div class="methodology-section-title">Data Sources</div>
-                    <div class="methodology-data-sources" id="methodologyDataSources">
-                        <div class="methodology-data-source">
-                            <div class="methodology-data-source-name">Cupom Cambial</div>
-                            <div class="methodology-data-source-value">
-                                B3 (Brasil, Bolsa, Balcão)
-                                <span class="methodology-data-source-badge">FREE</span>
-                            </div>
-                        </div>
-                        <div class="methodology-data-source">
-                            <div class="methodology-data-source-name">SOFR</div>
-                            <div class="methodology-data-source-value">
-                                FRED (St. Louis Fed)
-                                <span class="methodology-data-source-badge">FREE</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="methodology-section">
-                    <div class="methodology-section-title">Formula (USD → BRL)</div>
-                    <div class="methodology-text">
-                        The hedge cost/benefit is calculated as the difference between the <strong>implied USD rate</strong> in Brazil and the <strong>actual USD rate</strong>:
-                    </div>
-                    <div class="methodology-formula">
-                        <div class="methodology-formula-main">Hedge Benefit (bps) = (Cupom Cambial − SOFR) × 100</div>
-                        <div class="methodology-formula-vars">
-                            <span>Cupom Cambial</span> = Implied USD rate in Brazil (from B3 DDI futures)<br>
-                            <span>SOFR</span> = Secured Overnight Financing Rate (actual USD rate)
-                        </div>
-                    </div>
-                    <div class="methodology-text">
-                        A <strong style="color: var(--green);">positive</strong> value means you <em>benefit</em> from hedging. 
-                        A <strong style="color: var(--red);">negative</strong> value would mean a hedging <em>cost</em>.
-                    </div>
-                </div>
-                
-                <div class="methodology-section">
-                    <div class="methodology-section-title">Why Cupom Cambial?</div>
-                    <div class="methodology-text">
-                        The Cupom Cambial already incorporates the <strong>convertibility premium</strong> — the cost of USD being "trapped" in Brazil's financial system vs. freely tradeable offshore USD:
-                    </div>
-                    <div class="methodology-formula">
-                        <div class="methodology-formula-vars">
-                            <span>Theoretical max gain</span> = CDI − SOFR ≈ 900 bps<br>
-                            <span>Actual hedge gain</span> = Cupom Cambial − SOFR ≈ 50-150 bps<br>
-                            <span>Difference</span> = Convertibility Premium (already priced in by market)
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="methodology-section">
-                    <div class="methodology-section-title">Limitations</div>
-                    <div class="methodology-warning">
-                        <span class="methodology-warning-icon">⚠️</span>
-                        <span class="methodology-warning-text">
-                            This calculation represents the <strong>expected</strong> hedge cost/benefit based on current market rates. 
-                            It does <strong>not</strong> include: (1) Transaction costs (bid-offer spreads on futures), 
-                            (2) Slippage from discrete hedging, (3) Roll costs for multi-year hedges. 
-                            Use manual override for institution-specific adjustments.
-                        </span>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="methodology-footer">
-                <div class="methodology-ref">
-                    Based on CIP (Covered Interest Parity) principles. 
-                    Reference: <a href="https://ssrn.com/abstract=3924377" target="_blank" rel="noopener">Patry & Mozley (2021) "Future Hedging Costs"</a>
-                </div>
-            </div>
-        </div>
-    </div>
+    **For USD ↔ BRL**: Fetches LIVE data from B3 (Cupom Cambial) and FRED (SOFR)
+    Formula: Hedge Benefit = Cupom Cambial - SOFR
     
-    <script>
-        // Methodology Modal Logic
-        document.getElementById('showMethodologyBtn').addEventListener('click', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            document.getElementById('methodologyModal').classList.add('show');
-        });
+    Returns cost in basis points (bps) and metadata.
+    - Positive cost = hedging BENEFIT (you gain, e.g., USD→BRL typically positive)
+    - Negative cost = hedging COST (you pay)
+    
+    For restricted currencies (BRL, CNY): Uses NDF/Futures implied costs
+    For deliverable currencies: Uses cross-currency basis swap spreads
+    """
+    base = base_currency.upper()
+    target = target_currency.upper()
+    supported = ['BRL', 'USD', 'EUR', 'GBP', 'CHF', 'JPY', 'CNY', 'CAD', 'AUD', 'ARS']
+    
+    if base not in supported:
+        raise HTTPException(status_code=404, detail=f"Base currency {base} not supported")
+    if target not in supported:
+        raise HTTPException(status_code=404, detail=f"Target currency {target} not supported")
+    
+    # Use async version to get live B3 data for BRL
+    result = await get_hedging_cost_async(base, target, tenor)
+    result['base_currency'] = base
+    result['target_currency'] = target
+    result['tenor'] = tenor
+    result['as_of'] = datetime.now().strftime("%Y-%m-%d")
+    
+    return result
+
+@app.get("/api/hedging-cost/all", tags=["Reference Data"])
+async def get_all_hedging_costs(tenor: float = 5):
+    """Get hedging cost matrix for all supported currency pairs"""
+    supported = ['BRL', 'USD', 'EUR', 'GBP', 'CHF', 'JPY', 'CNY', 'CAD', 'AUD', 'ARS']
+    matrix = {}
+    
+    for base in supported:
+        matrix[base] = {}
+        for target in supported:
+            if base != target:
+                # Use async for BRL pairs to get live data
+                if 'BRL' in [base, target]:
+                    cost_data = await get_hedging_cost_async(base, target, tenor)
+                else:
+                    cost_data = get_hedging_cost_sync(base, target, tenor)
+                matrix[base][target] = cost_data['cost_bps']
+    
+    return {
+        "tenor": tenor,
+        "matrix": matrix,
+        "as_of": datetime.now().strftime("%Y-%m-%d"),
+        "notes": "Cost in bps. Positive = benefit, Negative = cost. BRL pairs use LIVE B3 data."
+    }
+
+@app.get("/api/indexers", tags=["Reference Data"])
+async def list_all_indexers():
+    result = {}
+    for ccy in ['BRL', 'USD', 'EUR', 'GBP', 'CHF', 'JPY', 'CNY', 'CAD', 'AUD', 'ARS']:
+        result[ccy] = await get_live_indexers(ccy)
+    return result
+
+@app.get("/api/indexers/{currency}", tags=["Reference Data"])
+async def get_indexers_by_currency(currency: str):
+    currency = currency.upper()
+    supported = ['BRL', 'USD', 'EUR', 'GBP', 'CHF', 'JPY', 'CNY', 'CAD', 'AUD', 'ARS']
+    if currency not in supported:
+        raise HTTPException(status_code=404, detail=f"Currency {currency} not found")
+    
+    indexers = await get_live_indexers(currency)
+    return {"currency": currency, "indexers": [IndexerResponse(**idx) for idx in indexers]}
+
+
+@app.get("/api/b3/cupom-cambial", tags=["Brazil Market Data"])
+async def get_b3_cupom_cambial(tenor: float = 5):
+    """
+    Get live Cupom Cambial (DOC curve) from B3.
+    
+    The Cupom Cambial is the implied USD rate in Brazil, derived from
+    DDI futures and FX forwards. It represents what a Brazilian investor
+    would earn on USD held within Brazil's financial system.
+    
+    This is the key input for calculating USD→BRL hedge cost/benefit:
+    Hedge Benefit = Cupom Cambial - SOFR
+    
+    **Data Source**: B3 (Brasil, Bolsa, Balcão) - FREE, no authentication
+    **Update Frequency**: Daily, after market close (~18:00 BRT)
+    """
+    b3_client = B3Client()
+    fred_client = FREDClient()
+    
+    try:
+        # Fetch full curve
+        curve = await b3_client.get_cupom_cambial_curve()
         
-        document.getElementById('closeMethodologyBtn').addEventListener('click', function() {
-            document.getElementById('methodologyModal').classList.remove('show');
-        });
+        # Get rate for specific tenor
+        rate_for_tenor = await b3_client.get_cupom_cambial_for_tenor(tenor)
         
-        document.getElementById('methodologyModal').addEventListener('click', function(e) {
-            if (e.target === this) {
-                this.classList.remove('show');
+        # Get SOFR for comparison
+        sofr = await fred_client.get_sofr()
+        
+        # Calculate hedge benefit if both available
+        hedge_benefit_bps = None
+        if rate_for_tenor is not None and sofr is not None:
+            hedge_benefit_bps = round((rate_for_tenor - sofr) * 100, 1)
+        
+        # Format curve for response (sample vertices)
+        sample_tenors = [0.5, 1, 2, 3, 5, 7, 10]
+        curve_sample = {}
+        if curve:
+            for t in sample_tenors:
+                days = int(t * 360)
+                rate = b3_client.interpolate_cupom_cambial(curve, days)
+                if rate is not None:
+                    curve_sample[f"{t}Y"] = round(rate, 4)
+        
+        return {
+            "as_of": datetime.now().strftime("%Y-%m-%d"),
+            "source": "B3 Taxas Referenciais",
+            "is_live": curve is not None,
+            "requested_tenor": tenor,
+            "cupom_cambial_rate": round(rate_for_tenor, 4) if rate_for_tenor else None,
+            "sofr_rate": round(sofr, 4) if sofr else None,
+            "hedge_benefit_bps": hedge_benefit_bps,
+            "calculation": f"({rate_for_tenor:.2f}% - {sofr:.2f}%) × 100 = {hedge_benefit_bps} bps" if hedge_benefit_bps else None,
+            "curve_sample": curve_sample,
+            "notes": {
+                "cupom_cambial": "Implied USD rate in Brazil (from DDI futures)",
+                "sofr": "Secured Overnight Financing Rate (actual USD rate)",
+                "hedge_benefit": "Positive = you GAIN from hedging USD→BRL",
+                "data_source": "B3 publishes daily after market close (~18:00 BRT)"
             }
-        });
+        }
+    except Exception as e:
+        logger.error(f"B3 Cupom Cambial fetch error: {e}")
+        return {
+            "error": "Failed to fetch live B3 data",
+            "fallback_available": True,
+            "notes": "Using fallback reference data. B3 data may be temporarily unavailable."
+        }
+
+
+@app.get("/api/risk-free-rates/{currency}", tags=["Reference Data"])
+async def get_risk_free_curve(currency: str):
+    currency = currency.upper()
+    if currency not in FALLBACK_RISK_FREE:
+        raise HTTPException(status_code=404, detail=f"Currency {currency} not found")
+    
+    return {
+        "currency": currency,
+        "curve": {str(k): v for k, v in FALLBACK_RISK_FREE[currency].items()},
+        "source": "Reference Data"
+    }
+
+
+@app.get("/api/curves/{currency}", tags=["Reference Data"])
+async def get_yield_curve_for_chart(currency: str):
+    """Get full yield curve data for charting (tenors 1-30 years)"""
+    currency = currency.upper()
+    supported = ['BRL', 'USD', 'EUR', 'GBP', 'CHF', 'JPY', 'CNY', 'CAD', 'AUD', 'ARS']
+    if currency not in supported:
+        raise HTTPException(status_code=404, detail=f"Currency {currency} not supported")
+    
+    # Standard tenors for the chart
+    tenors = [1, 2, 3, 5, 7, 10, 15, 20, 30]
+    curve_data = []
+    source = "Reference"
+    
+    # Try to get live curve first
+    live_curve = None
+    try:
+        if currency == "USD":
+            live_curve = await get_live_risk_free_curve_usd()
+        elif currency == "BRL":
+            live_curve = await get_live_risk_free_curve_brl()
+        elif currency == "EUR":
+            live_curve = await get_live_risk_free_curve_eur()
+        elif currency == "GBP":
+            live_curve = await get_live_risk_free_curve_gbp()
+        elif currency == "CHF":
+            live_curve = await get_live_risk_free_curve_chf()
+        elif currency == "JPY":
+            live_curve = await get_live_risk_free_curve_jpy()
+        elif currency == "CAD":
+            live_curve = await get_live_risk_free_curve_cad()
+        elif currency == "AUD":
+            live_curve = await get_live_risk_free_curve_aud()
         
-        // Close on Escape key
-        document.addEventListener('keydown', function(e) {
-            if (e.key === 'Escape') {
-                document.getElementById('methodologyModal').classList.remove('show');
-            }
-        });
-    </script>
-</body>
-</html>
+        if live_curve:
+            source = "Live"
+    except Exception as e:
+        logger.error(f"Error fetching live curve for {currency}: {e}")
+    
+    # Build curve data for each tenor
+    for t in tenors:
+        rate = None
+        if live_curve:
+            rate = interpolate_rate(live_curve, t)
+        if rate is None:
+            rate = interpolate_fallback_rate(currency, t)
+        
+        if rate is not None:
+            curve_data.append({"tenor": t, "rate": round(rate, 4)})
+    
+    return {
+        "currency": currency,
+        "source": source,
+        "as_of": datetime.now().strftime("%Y-%m-%d"),
+        "curve": curve_data
+    }
+
+@app.post("/api/risk-free-rates/interpolate", tags=["Reference Data"], response_model=RiskFreeRateResponse)
+async def interpolate_risk_free_rate(request: RiskFreeRateRequest):
+    rate, source = await get_risk_free_rate(request.currency.upper(), request.tenor)
+    
+    if rate is None:
+        raise HTTPException(status_code=404, detail=f"Rate not available")
+    
+    return RiskFreeRateResponse(currency=request.currency.upper(), tenor=request.tenor, rate=rate, source=source)
+
+# ============================================================================
+# MAIN CALCULATION
+# ============================================================================
+
+@app.post("/api/calculate/hedged-return", tags=["Calculations"], response_model=CIPCalculationResponse)
+async def calculate_hedged_return(request: CIPCalculationRequest):
+    """Calculate CIP-based hedged return conversion with optional hedging cost"""
+    
+    indexers = await get_live_indexers(request.base_currency)
+    
+    base_idx_data = None
+    for idx in indexers:
+        if idx['key'] == request.base_indexer_key:
+            base_idx_data = idx
+            break
+    
+    if base_idx_data is None:
+        raise HTTPException(status_code=400, detail="Invalid indexer key")
+    
+    i_base_t, base_source = await get_risk_free_rate(request.base_currency, request.tenor)
+    i_target_t, target_source = await get_risk_free_rate(request.target_currency, request.tenor)
+    
+    if i_base_t is None or i_target_t is None:
+        raise HTTPException(status_code=400, detail="Risk-free rates not available")
+    
+    # CIP Calculation
+    spread_decimal = request.spread / 100
+    base_indexer_decimal = base_idx_data['value'] / 100
+    all_in_base_pp = ((1 + base_indexer_decimal) * (1 + spread_decimal) - 1) * 100
+    
+    i_base_decimal = i_base_t / 100
+    i_target_decimal = i_target_t / 100
+    all_in_base_decimal = all_in_base_pp / 100
+    
+    target_equiv_decimal = (1 + all_in_base_decimal) * ((1 + i_target_decimal) / (1 + i_base_decimal)) - 1
+    target_equiv_pp = target_equiv_decimal * 100
+    
+    # Handle hedging cost
+    hedging_cost_bps = None
+    hedging_cost_source = None
+    hedged_return_pp = target_equiv_pp  # Default: no hedging cost adjustment
+    
+    if request.include_hedging_cost:
+        if request.hedging_cost_bps is not None:
+            # Use manual override
+            hedging_cost_bps = request.hedging_cost_bps
+            hedging_cost_source = "Manual"
+        else:
+            # Get live hedging cost (uses B3 + FRED for BRL)
+            cost_data = await get_hedging_cost_async(request.base_currency, request.target_currency, request.tenor)
+            hedging_cost_bps = cost_data['cost_bps']
+            hedging_cost_source = cost_data['source']
+            # Add extra info if available
+            if cost_data.get('is_live'):
+                hedging_cost_source = f"Live ({cost_data['source']})"
+        
+        # Apply hedging cost: positive = benefit, negative = cost
+        hedging_cost_pp = hedging_cost_bps / 100  # Convert bps to percentage points
+        hedged_return_pp = target_equiv_pp + hedging_cost_pp
+    
+    total_return_target_pp = (math.pow(1 + hedged_return_pp / 100, request.tenor) - 1) * 100
+    total_return_base_pp = (math.pow(1 + all_in_base_decimal, request.tenor) - 1) * 100
+    
+    is_live = "[Live]" in base_idx_data.get('label', '')
+    
+    assumptions = [
+        AssumptionItem(name=base_idx_data['label'], value_pp=base_idx_data['value'], tenor_label="Spot", source_name="Live" if is_live else "Reference"),
+        AssumptionItem(name=f"{request.base_currency} Risk-Free ({request.tenor}Y)", value_pp=i_base_t, tenor_label="Curve", source_name=base_source),
+        AssumptionItem(name=f"{request.target_currency} Risk-Free ({request.tenor}Y)", value_pp=i_target_t, tenor_label="Curve", source_name=target_source),
+        AssumptionItem(name="Spread", value_pp=request.spread, tenor_label="Input", source_name="User")
+    ]
+    
+    # Add hedging cost to assumptions if included
+    if request.include_hedging_cost and hedging_cost_bps is not None:
+        assumptions.append(AssumptionItem(
+            name=f"Hedging Cost ({request.base_currency}→{request.target_currency})",
+            value_pp=round(hedging_cost_bps / 100, 4),  # Convert to pp for display
+            tenor_label=f"{request.tenor}Y",
+            source_name=hedging_cost_source
+        ))
+    
+    warnings = ["✓ CIP-based hedged conversion applied"]
+    if request.include_hedging_cost:
+        if hedging_cost_bps < 0:
+            warnings.append(f"⚠️ Hedging cost of {abs(hedging_cost_bps):.1f} bps applied ({hedging_cost_source})")
+        elif hedging_cost_bps > 0:
+            warnings.append(f"✓ Hedging benefit of {hedging_cost_bps:.1f} bps applied ({hedging_cost_source})")
+    if not is_live:
+        warnings.insert(0, "⚠️ Using reference data for some inputs")
+    
+    return CIPCalculationResponse(
+        ccy_base=request.base_currency,
+        ccy_target=request.target_currency,
+        tenor_years=request.tenor,
+        as_of_date=datetime.now().strftime("%Y-%m-%d"),
+        indexer_value=base_idx_data['value'],
+        spread_value=request.spread,
+        all_in_base_pp=round(all_in_base_pp, 4),
+        risk_free_base=i_base_t,
+        risk_free_target=i_target_t,
+        hedging_cost_bps=hedging_cost_bps,
+        hedged_return_pp=round(hedged_return_pp, 4),
+        usd_equiv_pp=round(target_equiv_pp, 4),  # Pre-hedging cost
+        total_return_target_pp=round(total_return_target_pp, 4),
+        total_return_base_pp=round(total_return_base_pp, 4),
+        total_return_pp=round(total_return_target_pp, 4),
+        assumptions=assumptions,
+        warnings=warnings
+    )
+
+@app.post("/api/cache/clear", tags=["Admin"])
+def clear_cache():
+    cache.clear()
+    return {"status": "Cache cleared", "timestamp": datetime.now().isoformat()}
+
+# ============================================================================
+# FRONTEND & SEO
+# ============================================================================
+
+static_dir = Path(__file__).parent / "static"
+if static_dir.exists():
+    app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
+@app.get("/")
+def serve_frontend():
+    index_file = Path(__file__).parent / "static" / "index.html"
+    if index_file.exists():
+        return FileResponse(index_file, media_type="text/html")
+    return {"message": "Frontend not found", "api_docs": "/docs"}
+
+@app.get("/robots.txt")
+def serve_robots():
+    robots_file = Path(__file__).parent / "static" / "robots.txt"
+    if robots_file.exists():
+        return FileResponse(robots_file, media_type="text/plain")
+    return "User-agent: *\nAllow: /"
+
+@app.get("/sitemap.xml")
+def serve_sitemap():
+    sitemap_file = Path(__file__).parent / "static" / "sitemap.xml"
+    if sitemap_file.exists():
+        return FileResponse(sitemap_file, media_type="application/xml")
+    raise HTTPException(status_code=404, detail="Sitemap not found")
+
+if __name__ == "__main__":
+    import uvicorn
+    
+    print("\n" + "="*60)
+    print("🚀 CrossFX Yield v5.0 - LIVE DATA + PWA")
+    print("="*60)
+    print("\n📍 Frontend: http://localhost:8000")
+    print("📍 API Docs: http://localhost:8000/docs")
+    print("\n⚙️  Data Sources:")
+    print("   BRL: BCB (Banco Central) ✓ FREE")
+    print("   USD: FRED ✓")
+    print("   EUR: ECB ✓")
+    print("   GBP: BoE ✓")
+    print(f"   httpx: {'✓' if HTTPX_AVAILABLE else '✗ pip install httpx'}")
+    print("\n🆕 v5.0 Features:")
+    print("   ✓ Hedging Cost (xccy basis / NDF)")
+    print("   ✓ PWA Support (Install as App)")
+    print("   ✓ SEO Optimized")
+    print("\n" + "="*60 + "\n")
+    
+    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
