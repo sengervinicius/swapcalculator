@@ -257,12 +257,15 @@ XCCY_BASIS_VS_USD = {
     # BRL: Small positive (convertibility premium)
     # This should be SMALL - the big CDI-SOFR diff is already in CIP
     'BRL': {1: 15, 2: 20, 3: 25, 5: 35, 10: 45},
-    # ARS: Capital controls create real NDF basis - this can be larger
-    # but still represents deviation from official rate differential
-    'ARS': {1: -150, 2: -200, 3: -250, 5: -300, 10: -400},
-    # CNY: Modest NDF basis for restricted currency
+    # ARS: Capital controls - hedging via NDF is complex, show 0 and let user override
+    # The NDF premium is NOT a simple xccy basis - it's a different market
+    'ARS': {1: 0, 2: 0, 3: 0, 5: 0, 10: 0},
+    # CNY: Restricted but more liquid - small basis
     'CNY': {1: -10, 2: -15, 3: -18, 5: -22, 10: -30},
 }
+
+# Currencies where hedging cost suggestion should show "Manual entry recommended"
+MANUAL_HEDGE_CURRENCIES = {'ARS'}  # Add others if needed
 
 # Data quality indicators
 HEDGING_COST_DATA_QUALITY = {
@@ -1562,8 +1565,8 @@ def get_hedging_cost_sync(base_currency: str, target_currency: str, tenor: float
     
     TYPICAL RANGES:
     - G10 currencies: -10 to -50 bps (small)
-    - BRL (Cupom - SOFR): +50 to +200 bps (convertibility premium)
-    - ARS (NDF basis): -500 to -1500 bps (large due to capital controls)
+    - BRL (Cupom - SOFR): +15 to +45 bps (small convertibility premium)
+    - ARS: 0 (manual entry recommended - NDF market is complex)
     
     SIGN CONVENTION (for USD → CCY):
     - POSITIVE = benefit (actual forward better than CIP-implied)
@@ -1580,8 +1583,12 @@ def get_hedging_cost_sync(base_currency: str, target_currency: str, tenor: float
             "is_live": False,
             "instrument": "None",
             "notes": "Same currency pair",
-            "data_quality": "N/A"
+            "data_quality": "N/A",
+            "requires_manual": False
         }
+    
+    # Check if this pair requires manual entry (e.g., ARS)
+    requires_manual = base in MANUAL_HEDGE_CURRENCIES or target in MANUAL_HEDGE_CURRENCIES
     
     # Get xccy basis for both currencies vs USD
     base_basis = interpolate_xccy_basis(base, tenor) or 0
@@ -1599,21 +1606,20 @@ def get_hedging_cost_sync(base_currency: str, target_currency: str, tenor: float
     else:
         cost_bps = target_basis - base_basis
     
-    # Determine instrument type
-    em_currencies = ['BRL', 'ARS', 'CNY']
-    
-    if base == 'BRL' or target == 'BRL':
-        instrument = "DDI Futures / FRC (Cupom Cambial)"
-        notes = f"Basis: {base}={base_basis:+.0f}bps, {target}={target_basis:+.0f}bps"
-    elif base == 'ARS' or target == 'ARS':
+    # Determine instrument type and notes
+    if base == 'ARS' or target == 'ARS':
         instrument = "Non-Deliverable Forward (NDF)"
-        notes = f"ARS NDF basis reflects capital controls • {base}={base_basis:+.0f}bps, {target}={target_basis:+.0f}bps"
+        notes = "Capital controls - manual entry recommended"
+        cost_bps = 0  # Force to 0 for ARS, user must override
+    elif base == 'BRL' or target == 'BRL':
+        instrument = "DDI Futures / FRC (Cupom Cambial)"
+        notes = f"Small convertibility premium"
     elif base == 'CNY' or target == 'CNY':
         instrument = "Non-Deliverable Forward (NDF)"
-        notes = f"CNY restricted currency • {base}={base_basis:+.0f}bps, {target}={target_basis:+.0f}bps"
+        notes = f"Restricted currency - small NDF basis"
     else:
         instrument = "Cross-Currency Basis Swap"
-        notes = f"G10 xccy basis • {base}={base_basis:+.0f}bps, {target}={target_basis:+.0f}bps"
+        notes = f"G10 xccy basis"
     
     # Data quality
     base_quality = HEDGING_COST_DATA_QUALITY.get(base, 'estimate')
@@ -1632,6 +1638,7 @@ def get_hedging_cost_sync(base_currency: str, target_currency: str, tenor: float
         "data_quality": data_quality,
         "base_basis_bps": base_basis,
         "target_basis_bps": target_basis,
+        "requires_manual": requires_manual,
         "methodology": get_methodology_for_pair(base, target)
     }
 
