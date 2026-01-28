@@ -1017,6 +1017,19 @@
             color: var(--text-secondary);
         }
         
+        .hedging-cost-explanation {
+            display: block;
+            font-size: 0.72rem;
+            color: var(--cyan);
+            margin-top: 4px;
+            font-weight: 500;
+            font-style: italic;
+        }
+        
+        .hedging-cost-explanation:empty {
+            display: none;
+        }
+        
         .hedging-cost-actions {
             display: flex;
             gap: 8px;
@@ -2280,6 +2293,7 @@
                                     <span class="hedging-cost-source" id="hedgingCostSource">Reference</span>
                                 </div>
                                 <span class="hedging-cost-instrument" id="hedgingCostInstrument">Select currencies first</span>
+                                <span class="hedging-cost-explanation" id="hedgingCostExplanation"></span>
                             </div>
                             <div class="hedging-cost-actions">
                                 <button type="button" class="btn-apply" id="useSuggestedBtn">
@@ -2421,13 +2435,27 @@
                         <div class="analysis-section" id="analysisSection" style="display: none;">
                             <div class="analysis-tabs">
                                 <button class="analysis-tab active" data-tab="compare">
-                                    <span class="tab-icon">📊</span>Compare
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;">
+                                        <rect x="3" y="3" width="7" height="7"></rect>
+                                        <rect x="14" y="3" width="7" height="7"></rect>
+                                        <rect x="14" y="14" width="7" height="7"></rect>
+                                        <rect x="3" y="14" width="7" height="7"></rect>
+                                    </svg>
+                                    Compare
                                 </button>
                                 <button class="analysis-tab" data-tab="breakeven">
-                                    <span class="tab-icon">⚖️</span>Breakeven
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;">
+                                        <circle cx="12" cy="12" r="10"></circle>
+                                        <line x1="12" y1="8" x2="12" y2="16"></line>
+                                        <line x1="8" y1="12" x2="16" y2="12"></line>
+                                    </svg>
+                                    Breakeven
                                 </button>
                                 <button class="analysis-tab" data-tab="history">
-                                    <span class="tab-icon">📈</span>Tenor Analysis
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;">
+                                        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+                                    </svg>
+                                    Tenor Curve
                                 </button>
                             </div>
                             
@@ -2443,33 +2471,37 @@
                                 <div class="breakeven-container">
                                     <div class="breakeven-header">
                                         <div>
-                                            <div class="breakeven-title">Hedge Cost Breakeven Analysis</div>
-                                            <div class="breakeven-subtitle">At what cost does the trade stop making sense?</div>
+                                            <div class="breakeven-title">Hedge Cost Sensitivity</div>
+                                            <div class="breakeven-subtitle">How much can hedge costs change before the trade breaks even?</div>
                                         </div>
                                     </div>
                                     
-                                    <div class="breakeven-gauge" id="breakevenGauge">
-                                        <div class="breakeven-marker" id="currentCostMarker" data-label="Current"></div>
-                                        <div class="breakeven-marker" id="breakevenMarker" data-label="Breakeven" style="background: var(--yellow);"></div>
-                                    </div>
-                                    <div class="breakeven-labels">
-                                        <span>Profitable</span>
-                                        <span>Marginal</span>
-                                        <span>Loss</span>
+                                    <div class="breakeven-explanation" style="margin: 16px 0; padding: 12px; background: var(--bg-input); border-radius: 8px; font-size: 0.8rem;">
+                                        <div style="color: var(--text-muted); margin-bottom: 8px;">
+                                            <strong style="color: var(--text-secondary);">What this shows:</strong>
+                                        </div>
+                                        <div style="color: var(--text-muted); line-height: 1.5;">
+                                            The <strong style="color: var(--green);">breakeven hedge cost</strong> is the point where the hedged return equals the base return.
+                                            If actual hedge costs go beyond this point, the trade becomes unprofitable.
+                                            The <strong style="color: var(--cyan);">cushion</strong> shows how much room you have before reaching breakeven.
+                                        </div>
                                     </div>
                                     
                                     <div class="breakeven-metrics">
                                         <div class="breakeven-metric">
                                             <div class="breakeven-metric-label">Current Hedge Cost</div>
                                             <div class="breakeven-metric-value" id="currentHedgeCostMetric">—</div>
+                                            <div class="breakeven-metric-note" style="font-size: 0.65rem; color: var(--text-muted); margin-top: 4px;">Applied to calculation</div>
                                         </div>
                                         <div class="breakeven-metric">
-                                            <div class="breakeven-metric-label">Breakeven Cost</div>
+                                            <div class="breakeven-metric-label">Breakeven Point</div>
                                             <div class="breakeven-metric-value" id="breakevenCostMetric">—</div>
+                                            <div class="breakeven-metric-note" style="font-size: 0.65rem; color: var(--text-muted); margin-top: 4px;">Hedged = Base return</div>
                                         </div>
                                         <div class="breakeven-metric">
-                                            <div class="breakeven-metric-label">Cushion</div>
+                                            <div class="breakeven-metric-label">Safety Margin</div>
                                             <div class="breakeven-metric-value" id="cushionMetric">—</div>
+                                            <div class="breakeven-metric-note" style="font-size: 0.65rem; color: var(--text-muted); margin-top: 4px;">Room before breakeven</div>
                                         </div>
                                     </div>
                                     
@@ -2491,7 +2523,8 @@
                                         <canvas id="tenorAnalysisChart"></canvas>
                                     </div>
                                     <div class="history-note">
-                                        Shows estimated hedge costs at different tenors for the selected currency pair
+                                        Shows estimated hedge costs at different tenors for the selected currency pair.
+                                        <br><span style="color: var(--text-muted);">Negative = you pay carry | Positive = you receive carry</span>
                                     </div>
                                 </div>
                             </div>
@@ -2574,6 +2607,7 @@
             if (!baseCurrency || !firstTarget) {
                 document.getElementById('hedgingCostRate').textContent = '— bps';
                 document.getElementById('hedgingCostInstrument').textContent = 'Select currencies first';
+                document.getElementById('hedgingCostExplanation').textContent = '';
                 currentHedgingCostData = null;
                 updateMethodologyModal(null);
                 return;
@@ -2589,6 +2623,7 @@
                 const rateEl = document.getElementById('hedgingCostRate');
                 const sourceEl = document.getElementById('hedgingCostSource');
                 const instrumentEl = document.getElementById('hedgingCostInstrument');
+                const explanationEl = document.getElementById('hedgingCostExplanation');
                 
                 // Safety check for cost_bps
                 const costBps = data.cost_bps ?? 0;
@@ -2612,6 +2647,9 @@
                 // Instrument info
                 instrumentEl.textContent = `${data.instrument}`;
                 
+                // Explanation text based on currencies
+                explanationEl.textContent = getHedgingCostExplanation(baseCurrency, firstTarget, costBps);
+                
                 // Update methodology modal with real data
                 updateMethodologyModal(data);
                 
@@ -2619,9 +2657,53 @@
                 console.error('Failed to fetch hedging cost:', e);
                 document.getElementById('hedgingCostRate').textContent = '— bps';
                 document.getElementById('hedgingCostInstrument').textContent = 'Unable to fetch';
+                document.getElementById('hedgingCostExplanation').textContent = '';
                 currentHedgingCostData = null;
                 updateMethodologyModal(null);
             }
+        }
+        
+        // Get explanation text for hedging cost
+        function getHedgingCostExplanation(baseCcy, targetCcy, costBps) {
+            // Currency-specific explanations
+            const explanations = {
+                'BRL': 'Convertibility premium (onshore/offshore spread)',
+                'ARS': 'NDF basis from capital controls',
+                'CNY': 'Restricted currency NDF premium',
+                'EUR': 'EUR/USD cross-currency basis',
+                'GBP': 'GBP/USD cross-currency basis',
+                'JPY': 'JPY/USD cross-currency basis (typically wider)',
+                'CHF': 'CHF/USD cross-currency basis',
+                'CAD': 'CAD/USD cross-currency basis',
+                'AUD': 'AUD/USD cross-currency basis',
+            };
+            
+            // Determine which currency drives the explanation
+            let explanation = '';
+            
+            if (baseCcy === 'BRL' || targetCcy === 'BRL') {
+                explanation = explanations['BRL'];
+            } else if (baseCcy === 'ARS' || targetCcy === 'ARS') {
+                explanation = explanations['ARS'];
+            } else if (baseCcy === 'CNY' || targetCcy === 'CNY') {
+                explanation = explanations['CNY'];
+            } else if (baseCcy !== 'USD' && targetCcy !== 'USD') {
+                // Cross pair - use the non-USD currency
+                const nonUSD = baseCcy !== 'USD' ? baseCcy : targetCcy;
+                explanation = explanations[nonUSD] || 'Cross-currency basis';
+            } else {
+                // USD pair
+                const nonUSD = baseCcy !== 'USD' ? baseCcy : targetCcy;
+                explanation = explanations[nonUSD] || 'Cross-currency basis vs USD';
+            }
+            
+            // Add direction hint
+            if (costBps > 0) {
+                return explanation + ' • You receive carry';
+            } else if (costBps < 0) {
+                return explanation + ' • You pay carry';
+            }
+            return explanation;
         }
         
         // Update methodology modal with actual data
@@ -3664,58 +3746,70 @@
             const hasHedgingCost = result.hedging_cost_bps !== null && result.hedging_cost_bps !== undefined;
             const currentHedgeCost = hasHedgingCost ? result.hedging_cost_bps : 0;
             
-            // Calculate breakeven: what hedge cost makes net return = base return?
-            // net_return = hedged_return - hedge_cost
-            // breakeven when: net_return = base_return
-            // So: breakeven_cost = hedged_return - base_return (in pp, convert to bps)
+            // The hedged return BEFORE applying hedge cost
             const hedgedReturnPreCost = result.usd_equiv_pp;
+            // The base return (what you'd get without hedging)
             const baseReturn = result.all_in_base_pp;
-            const breakevenCostBps = (hedgedReturnPreCost - baseReturn) * 100;
             
-            // Cushion: how much room before breakeven
-            const cushionBps = breakevenCostBps - currentHedgeCost;
+            // Breakeven hedge cost = the cost at which hedged_return_net equals base_return
+            // hedged_return_net = hedged_return_pre_cost + hedge_cost_pct
+            // At breakeven: hedged_return_pre_cost + breakeven_cost_pct = base_return
+            // So: breakeven_cost_pct = base_return - hedged_return_pre_cost
+            // In bps: breakeven_cost_bps = (base_return - hedged_return_pre_cost) * 100
+            const breakevenCostBps = (baseReturn - hedgedReturnPreCost) * 100;
             
-            // Update metrics
+            // Safety margin = difference between current cost and breakeven
+            // If current cost is BETTER than breakeven (higher/less negative), margin is positive
+            const safetyMarginBps = currentHedgeCost - breakevenCostBps;
+            
+            // Update metrics display
             const currentEl = document.getElementById('currentHedgeCostMetric');
             currentEl.textContent = `${currentHedgeCost >= 0 ? '+' : ''}${currentHedgeCost.toFixed(0)} bps`;
-            currentEl.className = 'breakeven-metric-value ' + (currentHedgeCost >= 0 ? 'good' : 'danger');
+            // Color based on whether cost is helping (positive) or hurting (negative)
+            if (currentHedgeCost > 0) {
+                currentEl.className = 'breakeven-metric-value good';
+            } else if (currentHedgeCost > -100) {
+                currentEl.className = 'breakeven-metric-value warning';
+            } else {
+                currentEl.className = 'breakeven-metric-value danger';
+            }
             
             const breakevenEl = document.getElementById('breakevenCostMetric');
             breakevenEl.textContent = `${breakevenCostBps >= 0 ? '+' : ''}${breakevenCostBps.toFixed(0)} bps`;
-            breakevenEl.className = 'breakeven-metric-value warning';
+            breakevenEl.className = 'breakeven-metric-value'; // Neutral color for reference point
             
-            const cushionEl = document.getElementById('cushionMetric');
-            cushionEl.textContent = `${cushionBps >= 0 ? '+' : ''}${cushionBps.toFixed(0)} bps`;
-            cushionEl.className = 'breakeven-metric-value ' + (cushionBps > 50 ? 'good' : cushionBps > 0 ? 'warning' : 'danger');
-            
-            // Update gauge positions
-            // Gauge goes from -500 bps to +500 bps (or dynamically based on values)
-            const gaugeMin = Math.min(-300, currentHedgeCost - 100, breakevenCostBps - 100);
-            const gaugeMax = Math.max(300, currentHedgeCost + 100, breakevenCostBps + 100);
-            const gaugeRange = gaugeMax - gaugeMin;
-            
-            const currentPos = ((currentHedgeCost - gaugeMin) / gaugeRange) * 100;
-            const breakevenPos = ((breakevenCostBps - gaugeMin) / gaugeRange) * 100;
-            
-            document.getElementById('currentCostMarker').style.left = `${Math.max(5, Math.min(95, currentPos))}%`;
-            document.getElementById('currentCostMarker').dataset.label = `Current: ${currentHedgeCost >= 0 ? '+' : ''}${currentHedgeCost.toFixed(0)}`;
-            
-            document.getElementById('breakevenMarker').style.left = `${Math.max(5, Math.min(95, breakevenPos))}%`;
-            document.getElementById('breakevenMarker').dataset.label = `B/E: ${breakevenCostBps >= 0 ? '+' : ''}${breakevenCostBps.toFixed(0)}`;
+            const marginEl = document.getElementById('cushionMetric');
+            marginEl.textContent = `${safetyMarginBps >= 0 ? '+' : ''}${safetyMarginBps.toFixed(0)} bps`;
+            marginEl.className = 'breakeven-metric-value ' + (safetyMarginBps > 100 ? 'good' : safetyMarginBps > 0 ? 'warning' : 'danger');
             
             // Update verdict
             const verdictEl = document.getElementById('breakevenVerdict');
             const verdictTextEl = document.getElementById('breakevenVerdictText');
             
-            if (cushionBps > 100) {
+            if (safetyMarginBps > 100) {
                 verdictEl.className = 'breakeven-verdict favorable';
-                verdictTextEl.textContent = `✅ Trade is FAVORABLE with ${cushionBps.toFixed(0)} bps cushion before breakeven`;
-            } else if (cushionBps > 0) {
+                verdictTextEl.innerHTML = `
+                    <strong>Trade is FAVORABLE</strong><br>
+                    <span style="font-size: 0.85rem; opacity: 0.9;">
+                        You have ${safetyMarginBps.toFixed(0)} bps of cushion. Hedge costs would need to worsen by this amount before the trade breaks even.
+                    </span>
+                `;
+            } else if (safetyMarginBps > 0) {
                 verdictEl.className = 'breakeven-verdict marginal';
-                verdictTextEl.textContent = `⚠️ Trade is MARGINAL — only ${cushionBps.toFixed(0)} bps cushion. Monitor hedge costs closely.`;
+                verdictTextEl.innerHTML = `
+                    <strong>Trade is MARGINAL</strong><br>
+                    <span style="font-size: 0.85rem; opacity: 0.9;">
+                        Only ${safetyMarginBps.toFixed(0)} bps margin before breakeven. Consider if the pickup justifies the risk.
+                    </span>
+                `;
             } else {
                 verdictEl.className = 'breakeven-verdict unfavorable';
-                verdictTextEl.textContent = `❌ Trade is UNFAVORABLE — hedge cost exceeds pickup by ${Math.abs(cushionBps).toFixed(0)} bps`;
+                verdictTextEl.innerHTML = `
+                    <strong>Trade is UNDERWATER</strong><br>
+                    <span style="font-size: 0.85rem; opacity: 0.9;">
+                        Current hedge cost exceeds breakeven by ${Math.abs(safetyMarginBps).toFixed(0)} bps. The hedged return is worse than staying in base currency.
+                    </span>
+                `;
             }
         }
         
