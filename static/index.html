@@ -1985,6 +1985,26 @@
             margin-top: 4px;
         }
         
+        .export-btn {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 14px;
+            background: var(--bg-input);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text-secondary);
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .export-btn:hover {
+            background: var(--green);
+            color: var(--bg-primary);
+            border-color: var(--green);
+        }
+        
         .bond-config-grid {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
@@ -2037,11 +2057,11 @@
         }
         
         .bond-result-card.base {
-            border-left: 3px solid var(--blue);
+            border-top: 3px solid var(--blue);
         }
         
         .bond-result-card.target {
-            border-left: 3px solid var(--green);
+            border-top: 3px solid var(--green);
         }
         
         .bond-result-header {
@@ -2054,13 +2074,19 @@
         }
         
         .bond-result-currency {
-            font-size: 0.9rem;
-            font-weight: 600;
-            color: var(--text-primary);
+            font-size: 1.1rem;
+            font-weight: 700;
+            font-family: 'JetBrains Mono', monospace;
         }
         
-        .bond-result-flag {
-            font-size: 1.1rem;
+        .bond-result-card.base .bond-result-currency { color: var(--blue); }
+        .bond-result-card.target .bond-result-currency { color: var(--green); }
+        
+        .bond-result-label {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
         }
         
         .bond-metrics-grid {
@@ -2086,18 +2112,134 @@
         
         .bond-metric-value {
             font-family: 'JetBrains Mono', monospace;
-            font-size: 1.1rem;
+            font-size: 1rem;
             font-weight: 700;
         }
         
-        .bond-metric-value.highlight {
-            color: var(--green);
+        .bond-metric-value.highlight { color: var(--green); }
+        .bond-metric-value.base-color { color: var(--blue); }
+        
+        /* Comparison Table */
+        .bond-comparison-table-container {
+            margin: 20px 0;
+            overflow-x: auto;
         }
         
-        .bond-metric-value.base-color {
+        .bond-comparison-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.8rem;
+        }
+        
+        .bond-comparison-table th,
+        .bond-comparison-table td {
+            padding: 12px 16px;
+            text-align: right;
+            border-bottom: 1px solid var(--border);
+        }
+        
+        .bond-comparison-table th:first-child,
+        .bond-comparison-table td:first-child {
+            text-align: left;
+            color: var(--text-secondary);
+        }
+        
+        .bond-comparison-table th {
+            background: var(--bg-input);
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.7rem;
+            letter-spacing: 0.5px;
+        }
+        
+        .bond-comparison-table th.col-base { color: var(--blue); }
+        .bond-comparison-table th.col-target { color: var(--green); }
+        
+        .bond-comparison-table td.col-base {
+            font-family: 'JetBrains Mono', monospace;
             color: var(--blue);
         }
         
+        .bond-comparison-table td.col-target {
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--green);
+        }
+        
+        .bond-comparison-table tr.highlight-row {
+            background: var(--bg-input);
+            font-weight: 600;
+        }
+        
+        .bond-comparison-table tr.highlight-row td:first-child {
+            color: var(--text-primary);
+        }
+        
+        /* Charts Section */
+        .bond-charts-section {
+            margin: 20px 0;
+            padding: 16px;
+            background: var(--bg-input);
+            border-radius: 10px;
+        }
+        
+        .bond-charts-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+        }
+        
+        .chart-legend {
+            display: flex;
+            gap: 16px;
+            font-size: 0.7rem;
+            font-weight: 400;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            color: var(--text-muted);
+        }
+        
+        .legend-color {
+            width: 12px;
+            height: 12px;
+            border-radius: 2px;
+        }
+        
+        .legend-color.interest { background: var(--cyan); }
+        .legend-color.principal { background: var(--blue); }
+        .legend-color.hedge { background: var(--red); opacity: 0.7; }
+        
+        .bond-charts-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        
+        .bond-chart-container {
+            background: var(--bg-tertiary);
+            border-radius: 8px;
+            padding: 12px;
+        }
+        
+        .bond-chart-title {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            text-align: center;
+            margin-bottom: 10px;
+        }
+        
+        .bond-chart-container canvas {
+            max-height: 200px;
+        }
+        
+        /* Amortization Table */
         .bond-cashflow-section {
             margin-top: 20px;
         }
@@ -2131,8 +2273,8 @@
         .bond-cashflow-table-wrapper {
             display: none;
             margin-top: 12px;
-            max-height: 300px;
-            overflow-y: auto;
+            max-height: 400px;
+            overflow: auto;
         }
         
         .bond-cashflow-table-wrapper.show {
@@ -2142,7 +2284,7 @@
         .bond-cashflow-table {
             width: 100%;
             border-collapse: collapse;
-            font-size: 0.75rem;
+            font-size: 0.72rem;
         }
         
         .bond-cashflow-table th {
@@ -2154,12 +2296,28 @@
             position: sticky;
             top: 0;
             text-transform: uppercase;
-            font-size: 0.65rem;
+            font-size: 0.6rem;
             letter-spacing: 0.3px;
         }
         
         .bond-cashflow-table th:first-child {
             text-align: left;
+        }
+        
+        .bond-cashflow-table th.col-group-base {
+            background: rgba(59, 130, 246, 0.15);
+            color: var(--blue);
+        }
+        
+        .bond-cashflow-table th.col-group-target {
+            background: rgba(34, 197, 94, 0.15);
+            color: var(--green);
+        }
+        
+        .bond-cashflow-table tr.subheader th {
+            font-size: 0.55rem;
+            padding: 6px 8px;
+            top: 36px;
         }
         
         .bond-cashflow-table td {
@@ -2172,68 +2330,17 @@
         .bond-cashflow-table td:first-child {
             text-align: left;
             color: var(--text-muted);
+            font-family: inherit;
         }
         
-        .bond-cashflow-table tr:last-child {
+        .bond-cashflow-table tr.total-row {
             font-weight: 600;
-            background: var(--bg-tertiary);
+            background: var(--bg-input);
         }
         
-        .bond-cashflow-table tr:last-child td {
+        .bond-cashflow-table tr.total-row td {
             border-bottom: none;
-            color: var(--green);
-        }
-        
-        .bond-comparison-summary {
-            margin-top: 20px;
-            padding: 16px;
-            background: linear-gradient(135deg, rgba(34, 197, 94, 0.08) 0%, rgba(6, 182, 212, 0.08) 100%);
-            border: 1px solid var(--green);
-            border-radius: 10px;
-        }
-        
-        .bond-comparison-title {
-            font-size: 0.75rem;
-            color: var(--text-muted);
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin-bottom: 12px;
-        }
-        
-        .bond-comparison-row {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 8px 0;
-        }
-        
-        .bond-comparison-row:not(:last-child) {
-            border-bottom: 1px solid var(--border);
-        }
-        
-        .bond-comparison-label {
-            font-size: 0.8rem;
-            color: var(--text-secondary);
-        }
-        
-        .bond-comparison-values {
-            display: flex;
-            gap: 20px;
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 0.85rem;
-        }
-        
-        .bond-comparison-value {
-            min-width: 80px;
-            text-align: right;
-        }
-        
-        .bond-comparison-value.base {
-            color: var(--blue);
-        }
-        
-        .bond-comparison-value.target {
-            color: var(--green);
+            padding: 12px 8px;
         }
         
         @media (max-width: 768px) {
@@ -2245,9 +2352,12 @@
                 grid-template-columns: 1fr;
             }
             
-            .bond-comparison-values {
-                flex-direction: column;
-                gap: 4px;
+            .bond-charts-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .bond-cashflow-table {
+                font-size: 0.65rem;
             }
         }
         
@@ -2436,10 +2546,14 @@
                     
                     <!-- Hedging Cost Panel -->
                     <div class="hedging-cost-panel" id="hedgingCostPanel">
+                        <div class="hedging-cost-note" style="font-size: 0.7rem; color: var(--text-muted); margin-bottom: 12px; padding: 8px; background: var(--bg-input); border-radius: 6px; border-left: 2px solid var(--cyan);">
+                            <strong>Note:</strong> Hedging cost is expressed in <strong>basis points per annum</strong> (bps p.a.). 
+                            This cost is applied periodically throughout the life of the hedge, not as a one-time fee.
+                        </div>
                         <div class="hedging-cost-suggested" id="hedgingCostSuggested">
                             <div class="hedging-cost-info">
                                 <span class="hedging-cost-label">
-                                    Suggested Cost
+                                    Suggested Cost <span style="font-weight: 400; color: var(--text-muted);">(per annum)</span>
                                     <button type="button" class="methodology-info-btn" id="showMethodologyBtn" title="View methodology">?</button>
                                     <span class="applied-badge">✓ Applied</span>
                                 </span>
@@ -2462,10 +2576,10 @@
                         
                         <div class="hedging-cost-manual" id="hedgingCostManual">
                             <div class="manual-input-group">
-                                <label>Manual override:</label>
+                                <label>Manual override <span style="font-weight: 400; color: var(--text-muted);">(bps p.a.)</span>:</label>
                                 <div class="input-with-unit">
                                     <input type="number" class="form-input" id="manualHedgingCost" step="0.1" placeholder="0">
-                                    <span class="input-unit">bps</span>
+                                    <span class="input-unit">bps p.a.</span>
                                 </div>
                             </div>
                             <div class="hedging-cost-actions">
@@ -2626,14 +2740,22 @@
                                 <div class="bond-simulator-container">
                                     <div class="bond-simulator-header">
                                         <div>
-                                            <div class="bond-simulator-title">Bond Cash Flow Simulator</div>
-                                            <div class="bond-simulator-subtitle">See actual cash flows and total returns for a bond investment</div>
+                                            <div class="bond-simulator-title">Bond Cash Flow Analysis</div>
+                                            <div class="bond-simulator-subtitle">Compare investment returns: Base currency vs Hedged foreign currency bond</div>
                                         </div>
+                                        <button class="export-btn" id="exportBondDataBtn" title="Export to Excel">
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                                <polyline points="7 10 12 15 17 10"></polyline>
+                                                <line x1="12" y1="15" x2="12" y2="3"></line>
+                                            </svg>
+                                            Export
+                                        </button>
                                     </div>
                                     
                                     <div class="bond-config-grid">
                                         <div class="bond-config-item">
-                                            <label>Bond Type</label>
+                                            <label>Bond Structure</label>
                                             <select id="bondType">
                                                 <option value="bullet">Bullet (Principal at maturity)</option>
                                                 <option value="amortizing">Fully Amortizing</option>
@@ -2641,11 +2763,11 @@
                                             </select>
                                         </div>
                                         <div class="bond-config-item">
-                                            <label>Face Value</label>
+                                            <label>Face Value (Principal)</label>
                                             <input type="number" id="bondFaceValue" value="1000000" min="1000" step="1000">
                                         </div>
                                         <div class="bond-config-item">
-                                            <label>Payment Frequency</label>
+                                            <label>Coupon Frequency</label>
                                             <select id="bondFrequency">
                                                 <option value="2">Semi-Annual</option>
                                                 <option value="1">Annual</option>
@@ -2655,28 +2777,29 @@
                                         </div>
                                     </div>
                                     
+                                    <!-- Summary Cards -->
                                     <div class="bond-results-grid" id="bondResultsGrid">
                                         <!-- Base Currency Card -->
                                         <div class="bond-result-card base">
                                             <div class="bond-result-header">
-                                                <span class="bond-result-currency" id="bondBaseCurrency">Base Currency</span>
-                                                <span class="bond-result-flag" id="bondBaseFlag">💵</span>
+                                                <span class="bond-result-currency" id="bondBaseCurrency">USD</span>
+                                                <span class="bond-result-label">Base Currency Bond</span>
                                             </div>
                                             <div class="bond-metrics-grid">
                                                 <div class="bond-metric">
-                                                    <div class="bond-metric-label">Total Cash In</div>
-                                                    <div class="bond-metric-value base-color" id="bondBaseTotalCash">—</div>
+                                                    <div class="bond-metric-label">Coupon Rate</div>
+                                                    <div class="bond-metric-value base-color" id="bondBaseCoupon">—</div>
                                                 </div>
                                                 <div class="bond-metric">
-                                                    <div class="bond-metric-label">MOIC</div>
-                                                    <div class="bond-metric-value base-color" id="bondBaseMOIC">—</div>
-                                                </div>
-                                                <div class="bond-metric">
-                                                    <div class="bond-metric-label">IRR</div>
+                                                    <div class="bond-metric-label">YTM / IRR</div>
                                                     <div class="bond-metric-value base-color" id="bondBaseIRR">—</div>
                                                 </div>
                                                 <div class="bond-metric">
-                                                    <div class="bond-metric-label">Profit</div>
+                                                    <div class="bond-metric-label">Total Proceeds</div>
+                                                    <div class="bond-metric-value base-color" id="bondBaseTotalCash">—</div>
+                                                </div>
+                                                <div class="bond-metric">
+                                                    <div class="bond-metric-label">Net P&L</div>
                                                     <div class="bond-metric-value base-color" id="bondBaseProfit">—</div>
                                                 </div>
                                             </div>
@@ -2685,84 +2808,127 @@
                                         <!-- Target Currency Card -->
                                         <div class="bond-result-card target">
                                             <div class="bond-result-header">
-                                                <span class="bond-result-currency" id="bondTargetCurrency">Target Currency</span>
-                                                <span class="bond-result-flag" id="bondTargetFlag">🌍</span>
+                                                <span class="bond-result-currency" id="bondTargetCurrency">BRL</span>
+                                                <span class="bond-result-label">Hedged Foreign Bond</span>
                                             </div>
                                             <div class="bond-metrics-grid">
                                                 <div class="bond-metric">
-                                                    <div class="bond-metric-label">Total Cash In</div>
-                                                    <div class="bond-metric-value highlight" id="bondTargetTotalCash">—</div>
+                                                    <div class="bond-metric-label">Coupon Rate</div>
+                                                    <div class="bond-metric-value highlight" id="bondTargetCoupon">—</div>
                                                 </div>
                                                 <div class="bond-metric">
-                                                    <div class="bond-metric-label">MOIC</div>
-                                                    <div class="bond-metric-value highlight" id="bondTargetMOIC">—</div>
-                                                </div>
-                                                <div class="bond-metric">
-                                                    <div class="bond-metric-label">IRR</div>
+                                                    <div class="bond-metric-label">YTM / IRR</div>
                                                     <div class="bond-metric-value highlight" id="bondTargetIRR">—</div>
                                                 </div>
                                                 <div class="bond-metric">
-                                                    <div class="bond-metric-label">Profit</div>
+                                                    <div class="bond-metric-label">Total Proceeds</div>
+                                                    <div class="bond-metric-value highlight" id="bondTargetTotalCash">—</div>
+                                                </div>
+                                                <div class="bond-metric">
+                                                    <div class="bond-metric-label">Net P&L</div>
                                                     <div class="bond-metric-value highlight" id="bondTargetProfit">—</div>
                                                 </div>
                                             </div>
                                         </div>
                                     </div>
                                     
-                                    <!-- Comparison Summary -->
-                                    <div class="bond-comparison-summary" id="bondComparisonSummary" style="display: none;">
-                                        <div class="bond-comparison-title">Side-by-Side Comparison</div>
-                                        <div class="bond-comparison-row">
-                                            <span class="bond-comparison-label">Investment (Face Value)</span>
-                                            <div class="bond-comparison-values">
-                                                <span class="bond-comparison-value base" id="bondCompareInvestBase">—</span>
-                                                <span class="bond-comparison-value target" id="bondCompareInvestTarget">—</span>
+                                    <!-- Comparison Table -->
+                                    <div class="bond-comparison-table-container" id="bondComparisonSummary" style="display: none;">
+                                        <table class="bond-comparison-table">
+                                            <thead>
+                                                <tr>
+                                                    <th></th>
+                                                    <th id="bondCompareHeaderBase" class="col-base">USD</th>
+                                                    <th id="bondCompareHeaderTarget" class="col-target">BRL (Hedged)</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                <tr>
+                                                    <td>Initial Investment</td>
+                                                    <td class="col-base" id="bondCompareInvestBase">—</td>
+                                                    <td class="col-target" id="bondCompareInvestTarget">—</td>
+                                                </tr>
+                                                <tr>
+                                                    <td>Total Interest Received</td>
+                                                    <td class="col-base" id="bondCompareInterestBase">—</td>
+                                                    <td class="col-target" id="bondCompareInterestTarget">—</td>
+                                                </tr>
+                                                <tr>
+                                                    <td>Principal Repayment</td>
+                                                    <td class="col-base" id="bondComparePrincipalBase">—</td>
+                                                    <td class="col-target" id="bondComparePrincipalTarget">—</td>
+                                                </tr>
+                                                <tr>
+                                                    <td>Total Proceeds</td>
+                                                    <td class="col-base" id="bondCompareCashBase">—</td>
+                                                    <td class="col-target" id="bondCompareCashTarget">—</td>
+                                                </tr>
+                                                <tr>
+                                                    <td>Net Profit / (Loss)</td>
+                                                    <td class="col-base" id="bondCompareProfitBase">—</td>
+                                                    <td class="col-target" id="bondCompareProfitTarget">—</td>
+                                                </tr>
+                                                <tr>
+                                                    <td>MOIC</td>
+                                                    <td class="col-base" id="bondCompareMOICBase">—</td>
+                                                    <td class="col-target" id="bondCompareMOICTarget">—</td>
+                                                </tr>
+                                                <tr class="highlight-row">
+                                                    <td>Additional Profit / (Loss) from Hedging</td>
+                                                    <td class="col-base">—</td>
+                                                    <td class="col-target" id="bondExtraProfit">—</td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    
+                                    <!-- Cash Flow Charts -->
+                                    <div class="bond-charts-section">
+                                        <div class="bond-charts-header">
+                                            <span>Cash Flow Schedule</span>
+                                            <div class="chart-legend">
+                                                <span class="legend-item"><span class="legend-color interest"></span> Interest</span>
+                                                <span class="legend-item"><span class="legend-color principal"></span> Principal</span>
+                                                <span class="legend-item"><span class="legend-color hedge"></span> Hedge Cost</span>
                                             </div>
                                         </div>
-                                        <div class="bond-comparison-row">
-                                            <span class="bond-comparison-label">Total Cash Received</span>
-                                            <div class="bond-comparison-values">
-                                                <span class="bond-comparison-value base" id="bondCompareCashBase">—</span>
-                                                <span class="bond-comparison-value target" id="bondCompareCashTarget">—</span>
+                                        <div class="bond-charts-grid">
+                                            <div class="bond-chart-container">
+                                                <div class="bond-chart-title" id="bondChartTitleBase">USD Bond Cash Flows</div>
+                                                <canvas id="bondChartBase"></canvas>
                                             </div>
-                                        </div>
-                                        <div class="bond-comparison-row">
-                                            <span class="bond-comparison-label">Net Profit</span>
-                                            <div class="bond-comparison-values">
-                                                <span class="bond-comparison-value base" id="bondCompareProfitBase">—</span>
-                                                <span class="bond-comparison-value target" id="bondCompareProfitTarget">—</span>
-                                            </div>
-                                        </div>
-                                        <div class="bond-comparison-row">
-                                            <span class="bond-comparison-label">MOIC (Multiple)</span>
-                                            <div class="bond-comparison-values">
-                                                <span class="bond-comparison-value base" id="bondCompareMOICBase">—</span>
-                                                <span class="bond-comparison-value target" id="bondCompareMOICTarget">—</span>
-                                            </div>
-                                        </div>
-                                        <div class="bond-comparison-row">
-                                            <span class="bond-comparison-label">Additional Profit (Hedged)</span>
-                                            <div class="bond-comparison-values">
-                                                <span class="bond-comparison-value" style="color: var(--green);" id="bondExtraProfit">—</span>
+                                            <div class="bond-chart-container">
+                                                <div class="bond-chart-title" id="bondChartTitleTarget">BRL Bond Cash Flows (Hedged)</div>
+                                                <canvas id="bondChartTarget"></canvas>
                                             </div>
                                         </div>
                                     </div>
                                     
-                                    <!-- Cash Flow Toggle -->
+                                    <!-- Detailed Schedule Toggle -->
                                     <div class="bond-cashflow-section">
                                         <button class="bond-cashflow-toggle" id="bondCashflowToggle">
                                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                                 <polyline points="9 18 15 12 9 6"></polyline>
                                             </svg>
-                                            View detailed cash flow schedule
+                                            View detailed amortization schedule
                                         </button>
                                         <div class="bond-cashflow-table-wrapper" id="bondCashflowWrapper">
-                                            <table class="bond-cashflow-table">
+                                            <table class="bond-cashflow-table" id="bondAmortTable">
                                                 <thead>
                                                     <tr>
                                                         <th>Period</th>
-                                                        <th id="cfHeaderBase">Base Ccy</th>
-                                                        <th id="cfHeaderTarget">Target Ccy</th>
+                                                        <th colspan="3" id="cfHeaderBase" class="col-group-base">USD</th>
+                                                        <th colspan="4" id="cfHeaderTarget" class="col-group-target">BRL (Hedged)</th>
+                                                    </tr>
+                                                    <tr class="subheader">
+                                                        <th></th>
+                                                        <th>Interest</th>
+                                                        <th>Principal</th>
+                                                        <th>Total</th>
+                                                        <th>Interest</th>
+                                                        <th>Principal</th>
+                                                        <th>Hedge Cost</th>
+                                                        <th>Net CF</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody id="bondCashflowBody">
@@ -3987,9 +4153,14 @@
         }
         
         // ============================================
-        // BOND SIMULATOR - Proper Financial Math
+        // BOND CASH FLOW ANALYSIS
         // Based on bond valuation theory (Damodaran ch33)
         // ============================================
+        
+        // Store bond data for export
+        let bondDataForExport = null;
+        let bondChartBase = null;
+        let bondChartTarget = null;
         
         function updateBondSimulator() {
             const result = calculatedResults[0];
@@ -4002,64 +4173,85 @@
             const bondType = document.getElementById('bondType').value;
             const frequency = parseInt(document.getElementById('bondFrequency').value) || 2;
             
-            // Annual coupon rates (these are the yields we calculated)
-            const baseCouponRate = result.all_in_base_pp / 100;      // e.g., 0.0435 for 4.35%
-            const hedgedCouponRate = result.hedged_return_pp / 100;  // e.g., 0.14 for 14%
+            // Get the hedge cost (per annum basis)
+            const hedgeCostBps = result.hedging_cost_bps || 0;
+            const hedgeCostPctPerAnnum = hedgeCostBps / 100; // Convert bps to percentage points
             
-            // Currency flags
-            const flags = {
-                'BRL': '🇧🇷', 'USD': '🇺🇸', 'EUR': '🇪🇺', 'GBP': '🇬🇧', 
-                'JPY': '🇯🇵', 'CHF': '🇨🇭', 'ARS': '🇦🇷', 'CNY': '🇨🇳',
-                'CAD': '🇨🇦', 'AUD': '🇦🇺'
-            };
+            // Coupon rates (annualized)
+            const baseCouponRate = result.all_in_base_pp / 100;
+            // usd_equiv_pp is the target return BEFORE hedge cost
+            const targetCouponRateGross = result.usd_equiv_pp / 100;
+            // hedged_return_pp is AFTER hedge cost (what we actually use)
+            const hedgedCouponRate = result.hedged_return_pp / 100;
             
-            // Update currency labels
-            document.getElementById('bondBaseCurrency').textContent = `${baseCurrency} Bond`;
-            document.getElementById('bondTargetCurrency').textContent = `${targetCurrency} Bond (Hedged)`;
-            document.getElementById('bondBaseFlag').textContent = flags[baseCurrency] || '💵';
-            document.getElementById('bondTargetFlag').textContent = flags[targetCurrency] || '🌍';
+            // Update currency labels in cards
+            document.getElementById('bondBaseCurrency').textContent = baseCurrency;
+            document.getElementById('bondTargetCurrency').textContent = targetCurrency;
+            
+            // Update table headers
+            document.getElementById('bondCompareHeaderBase').textContent = baseCurrency;
+            document.getElementById('bondCompareHeaderTarget').textContent = `${targetCurrency} (Hedged)`;
             document.getElementById('cfHeaderBase').textContent = baseCurrency;
             document.getElementById('cfHeaderTarget').textContent = `${targetCurrency} (Hedged)`;
             
-            // Generate cash flows for both scenarios
-            // Investment: -faceValue at t=0
-            // Returns: periodic payments based on bond type
-            const baseCashFlows = generateBondCashFlows(faceValue, baseCouponRate, tenor, bondType, frequency);
-            const hedgedCashFlows = generateBondCashFlows(faceValue, hedgedCouponRate, tenor, bondType, frequency);
+            // Update chart titles
+            document.getElementById('bondChartTitleBase').textContent = `${baseCurrency} Bond Cash Flows`;
+            document.getElementById('bondChartTitleTarget').textContent = `${targetCurrency} Bond Cash Flows (Hedged)`;
             
-            // Calculate key metrics
+            // Generate cash flows
+            const baseCashFlows = generateBondCashFlows(faceValue, baseCouponRate, tenor, bondType, frequency);
+            const targetCashFlows = generateBondCashFlows(faceValue, hedgedCouponRate, tenor, bondType, frequency);
+            
+            // For hedged bond, we need to track hedge cost separately
+            // The hedge cost is applied per period on the outstanding notional
+            const hedgedCashFlowsWithCost = generateHedgedCashFlows(
+                faceValue, targetCouponRateGross, hedgeCostPctPerAnnum, tenor, bondType, frequency
+            );
+            
+            // Calculate metrics
             const baseMetrics = calculateBondMetrics(faceValue, baseCashFlows, baseCouponRate, frequency);
-            const hedgedMetrics = calculateBondMetrics(faceValue, hedgedCashFlows, hedgedCouponRate, frequency);
+            const hedgedMetrics = calculateBondMetrics(faceValue, hedgedCashFlowsWithCost.netFlows, hedgedCouponRate, frequency);
             
             // Format helpers
             const formatCurrency = (num) => {
-                if (Math.abs(num) >= 1000000) return (num / 1000000).toFixed(2) + 'M';
-                if (Math.abs(num) >= 1000) return (num / 1000).toFixed(1) + 'K';
+                const absNum = Math.abs(num);
+                if (absNum >= 1000000) return (num / 1000000).toFixed(2) + 'M';
+                if (absNum >= 1000) return (num / 1000).toFixed(1) + 'K';
                 return num.toFixed(0);
             };
             
-            const formatPct = (num) => num.toFixed(2) + '%';
+            const formatPct = (num) => (num * 100).toFixed(2) + '%';
             
-            // Update Base card
+            // Update summary cards
+            document.getElementById('bondBaseCoupon').textContent = formatPct(baseCouponRate);
+            document.getElementById('bondBaseIRR').textContent = formatPct(baseMetrics.irr);
             document.getElementById('bondBaseTotalCash').textContent = formatCurrency(baseMetrics.totalCashReceived);
-            document.getElementById('bondBaseMOIC').textContent = baseMetrics.moic.toFixed(3) + 'x';
-            document.getElementById('bondBaseIRR').textContent = formatPct(baseMetrics.irr * 100);
-            document.getElementById('bondBaseProfit').textContent = formatCurrency(baseMetrics.nominalProfit);
+            document.getElementById('bondBaseProfit').textContent = (baseMetrics.nominalProfit >= 0 ? '+' : '') + formatCurrency(baseMetrics.nominalProfit);
             
-            // Update Target (Hedged) card
+            document.getElementById('bondTargetCoupon').textContent = formatPct(hedgedCouponRate);
+            document.getElementById('bondTargetIRR').textContent = formatPct(hedgedMetrics.irr);
             document.getElementById('bondTargetTotalCash').textContent = formatCurrency(hedgedMetrics.totalCashReceived);
-            document.getElementById('bondTargetMOIC').textContent = hedgedMetrics.moic.toFixed(3) + 'x';
-            document.getElementById('bondTargetIRR').textContent = formatPct(hedgedMetrics.irr * 100);
-            document.getElementById('bondTargetProfit').textContent = formatCurrency(hedgedMetrics.nominalProfit);
+            document.getElementById('bondTargetProfit').textContent = (hedgedMetrics.nominalProfit >= 0 ? '+' : '') + formatCurrency(hedgedMetrics.nominalProfit);
             
-            // Update comparison summary
+            // Calculate totals for comparison table
+            const baseTotalInterest = baseCashFlows.reduce((sum, cf) => sum + cf.interest, 0);
+            const baseTotalPrincipal = baseCashFlows.reduce((sum, cf) => sum + cf.principal, 0);
+            const hedgedTotalInterest = hedgedCashFlowsWithCost.grossFlows.reduce((sum, cf) => sum + cf.interest, 0);
+            const hedgedTotalPrincipal = hedgedCashFlowsWithCost.grossFlows.reduce((sum, cf) => sum + cf.principal, 0);
+            const totalHedgeCost = hedgedCashFlowsWithCost.totalHedgeCost;
+            
+            // Update comparison table
             document.getElementById('bondComparisonSummary').style.display = 'block';
             document.getElementById('bondCompareInvestBase').textContent = formatCurrency(faceValue);
             document.getElementById('bondCompareInvestTarget').textContent = formatCurrency(faceValue);
+            document.getElementById('bondCompareInterestBase').textContent = formatCurrency(baseTotalInterest);
+            document.getElementById('bondCompareInterestTarget').textContent = formatCurrency(hedgedTotalInterest - Math.abs(totalHedgeCost));
+            document.getElementById('bondComparePrincipalBase').textContent = formatCurrency(baseTotalPrincipal);
+            document.getElementById('bondComparePrincipalTarget').textContent = formatCurrency(hedgedTotalPrincipal);
             document.getElementById('bondCompareCashBase').textContent = formatCurrency(baseMetrics.totalCashReceived);
             document.getElementById('bondCompareCashTarget').textContent = formatCurrency(hedgedMetrics.totalCashReceived);
-            document.getElementById('bondCompareProfitBase').textContent = formatCurrency(baseMetrics.nominalProfit);
-            document.getElementById('bondCompareProfitTarget').textContent = formatCurrency(hedgedMetrics.nominalProfit);
+            document.getElementById('bondCompareProfitBase').textContent = (baseMetrics.nominalProfit >= 0 ? '+' : '') + formatCurrency(baseMetrics.nominalProfit);
+            document.getElementById('bondCompareProfitTarget').textContent = (hedgedMetrics.nominalProfit >= 0 ? '+' : '') + formatCurrency(hedgedMetrics.nominalProfit);
             document.getElementById('bondCompareMOICBase').textContent = baseMetrics.moic.toFixed(3) + 'x';
             document.getElementById('bondCompareMOICTarget').textContent = hedgedMetrics.moic.toFixed(3) + 'x';
             
@@ -4068,13 +4260,32 @@
             extraProfitEl.textContent = (extraProfit >= 0 ? '+' : '') + formatCurrency(extraProfit);
             extraProfitEl.style.color = extraProfit >= 0 ? 'var(--green)' : 'var(--red)';
             
-            // Build cash flow table
-            buildCashFlowTable(baseCashFlows, hedgedCashFlows, baseCurrency, targetCurrency, faceValue);
+            // Build charts
+            renderBondCharts(baseCashFlows, hedgedCashFlowsWithCost, baseCurrency, targetCurrency);
+            
+            // Build detailed amortization table
+            buildAmortizationTable(baseCashFlows, hedgedCashFlowsWithCost, baseCurrency, targetCurrency, faceValue);
+            
+            // Store data for export
+            bondDataForExport = {
+                baseCurrency,
+                targetCurrency,
+                tenor,
+                faceValue,
+                bondType,
+                frequency,
+                baseCouponRate,
+                hedgedCouponRate,
+                hedgeCostBps,
+                baseCashFlows,
+                hedgedCashFlowsWithCost,
+                baseMetrics,
+                hedgedMetrics
+            };
         }
         
         /**
-         * Generate cash flows for a bond
-         * Returns array of {period, year, interest, principal, payment, balance}
+         * Generate cash flows for base currency bond
          */
         function generateBondCashFlows(faceValue, annualCouponRate, tenorYears, bondType, frequency) {
             const cashFlows = [];
@@ -4083,20 +4294,16 @@
             const periodRate = annualCouponRate / periodsPerYear;
             
             if (bondType === 'zero') {
-                // Zero coupon: single payment at maturity
-                // For zero coupon, the "coupon rate" is the yield
-                // FV = PV × (1 + r)^n, so maturity value = faceValue × (1 + rate)^years
                 const maturityValue = faceValue * Math.pow(1 + annualCouponRate, tenorYears);
                 cashFlows.push({
                     period: totalPeriods,
                     year: tenorYears,
-                    interest: maturityValue - faceValue, // Accreted interest
+                    interest: maturityValue - faceValue,
                     principal: faceValue,
                     payment: maturityValue,
                     balance: 0
                 });
             } else if (bondType === 'bullet') {
-                // Bullet bond: periodic interest payments + full principal at maturity
                 const couponPayment = faceValue * periodRate;
                 
                 for (let i = 1; i <= totalPeriods; i++) {
@@ -4112,10 +4319,7 @@
                     });
                 }
             } else if (bondType === 'amortizing') {
-                // Fully amortizing: equal total payments (like a mortgage)
-                // PMT = PV × [r(1+r)^n] / [(1+r)^n - 1]
                 if (periodRate === 0) {
-                    // Edge case: 0% rate
                     const pmt = faceValue / totalPeriods;
                     let balance = faceValue;
                     for (let i = 1; i <= totalPeriods; i++) {
@@ -4155,55 +4359,71 @@
         }
         
         /**
-         * Calculate bond metrics from cash flows
-         * IRR is calculated using Newton-Raphson method
+         * Generate hedged cash flows with explicit hedge cost tracking
+         * Hedge cost is applied PER PERIOD on outstanding notional (annualized rate / frequency)
          */
-        function calculateBondMetrics(investment, cashFlows, couponRate, frequency) {
-            // Total nominal cash received (not discounted)
-            const totalCashReceived = cashFlows.reduce((sum, cf) => sum + cf.payment, 0);
+        function generateHedgedCashFlows(faceValue, grossCouponRate, hedgeCostPctPerAnnum, tenorYears, bondType, frequency) {
+            const grossFlows = generateBondCashFlows(faceValue, grossCouponRate, tenorYears, bondType, frequency);
+            const periodsPerYear = frequency;
+            const periodHedgeCost = hedgeCostPctPerAnnum / periodsPerYear;
             
-            // Nominal profit
-            const nominalProfit = totalCashReceived - investment;
+            let totalHedgeCost = 0;
+            const netFlows = [];
             
-            // MOIC - Multiple on Invested Capital
-            const moic = totalCashReceived / investment;
+            // For each period, calculate hedge cost on outstanding notional
+            let outstandingNotional = faceValue;
             
-            // Calculate IRR using Newton-Raphson
-            // NPV = -Investment + Σ(CF_t / (1+r)^t) = 0
-            // For a bond bought at par with coupon rate c, IRR should equal c
-            const irr = calculateIRR(investment, cashFlows, frequency);
+            for (let i = 0; i < grossFlows.length; i++) {
+                const gross = grossFlows[i];
+                
+                // Hedge cost for this period (applied to notional at start of period)
+                // Positive hedgeCost means you RECEIVE, negative means you PAY
+                const periodCost = outstandingNotional * periodHedgeCost;
+                totalHedgeCost += periodCost;
+                
+                // Update outstanding notional after principal payment
+                outstandingNotional -= gross.principal;
+                
+                netFlows.push({
+                    period: gross.period,
+                    year: gross.year,
+                    interest: gross.interest,
+                    principal: gross.principal,
+                    hedgeCost: periodCost, // Can be positive (receive) or negative (pay)
+                    payment: gross.interest + gross.principal + periodCost,
+                    balance: gross.balance
+                });
+            }
             
-            // Duration (Macaulay) - weighted average time to cash flows
-            // Duration = Σ(t × PV(CF_t)) / Price
-            const duration = calculateMacaulayDuration(cashFlows, irr, frequency);
-            
-            return {
-                totalCashReceived,
-                nominalProfit,
-                moic,
-                irr,
-                duration
-            };
+            return { grossFlows, netFlows, totalHedgeCost };
         }
         
         /**
-         * Calculate IRR using Newton-Raphson method
-         * Solves for r where: -Investment + Σ(CF_t / (1+r)^t) = 0
+         * Calculate bond metrics from cash flows
+         */
+        function calculateBondMetrics(investment, cashFlows, couponRate, frequency) {
+            const totalCashReceived = cashFlows.reduce((sum, cf) => sum + cf.payment, 0);
+            const nominalProfit = totalCashReceived - investment;
+            const moic = totalCashReceived / investment;
+            const irr = calculateIRR(investment, cashFlows, frequency);
+            
+            return { totalCashReceived, nominalProfit, moic, irr };
+        }
+        
+        /**
+         * Calculate IRR using Newton-Raphson
          */
         function calculateIRR(investment, cashFlows, frequency) {
-            // Convert cash flows to array with time in years
             const cfs = cashFlows.map(cf => ({ amount: cf.payment, year: cf.year }));
             
-            // NPV function
             const npv = (rate) => {
-                let pv = -investment; // Initial outflow
+                let pv = -investment;
                 for (const cf of cfs) {
                     pv += cf.amount / Math.pow(1 + rate, cf.year);
                 }
                 return pv;
             };
             
-            // NPV derivative with respect to rate
             const npvDerivative = (rate) => {
                 let dpv = 0;
                 for (const cf of cfs) {
@@ -4212,8 +4432,7 @@
                 return dpv;
             };
             
-            // Newton-Raphson iteration
-            let rate = 0.10; // Initial guess
+            let rate = 0.10;
             const maxIterations = 100;
             const tolerance = 1e-10;
             
@@ -4221,7 +4440,7 @@
                 const f = npv(rate);
                 const fPrime = npvDerivative(rate);
                 
-                if (Math.abs(fPrime) < 1e-15) break; // Avoid division by zero
+                if (Math.abs(fPrime) < 1e-15) break;
                 
                 const newRate = rate - f / fPrime;
                 
@@ -4230,8 +4449,6 @@
                 }
                 
                 rate = newRate;
-                
-                // Bound the rate to avoid divergence
                 if (rate < -0.99) rate = -0.99;
                 if (rate > 10) rate = 10;
             }
@@ -4240,88 +4457,252 @@
         }
         
         /**
-         * Calculate Macaulay Duration
-         * Duration = Σ(t × PV(CF_t)) / Bond Price
+         * Render stacked bar charts for cash flows
          */
-        function calculateMacaulayDuration(cashFlows, discountRate, frequency) {
-            let weightedTime = 0;
-            let totalPV = 0;
+        function renderBondCharts(baseCashFlows, hedgedData, baseCurrency, targetCurrency) {
+            const ctxBase = document.getElementById('bondChartBase');
+            const ctxTarget = document.getElementById('bondChartTarget');
             
-            for (const cf of cashFlows) {
-                const pv = cf.payment / Math.pow(1 + discountRate, cf.year);
-                weightedTime += cf.year * pv;
-                totalPV += pv;
-            }
+            if (!ctxBase || !ctxTarget) return;
             
-            return totalPV > 0 ? weightedTime / totalPV : 0;
+            // Destroy existing charts
+            if (bondChartBase) bondChartBase.destroy();
+            if (bondChartTarget) bondChartTarget.destroy();
+            
+            // Prepare data for base currency chart
+            const baseLabels = baseCashFlows.map(cf => `Y${cf.year.toFixed(1)}`);
+            const baseInterest = baseCashFlows.map(cf => cf.interest);
+            const basePrincipal = baseCashFlows.map(cf => cf.principal);
+            
+            // Prepare data for hedged chart
+            const hedgedLabels = hedgedData.netFlows.map(cf => `Y${cf.year.toFixed(1)}`);
+            const hedgedInterest = hedgedData.netFlows.map(cf => cf.interest);
+            const hedgedPrincipal = hedgedData.netFlows.map(cf => cf.principal);
+            const hedgedHedgeCost = hedgedData.netFlows.map(cf => cf.hedgeCost);
+            
+            const chartOptions = {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const value = context.raw;
+                                if (Math.abs(value) >= 1000000) {
+                                    return context.dataset.label + ': ' + (value / 1000000).toFixed(2) + 'M';
+                                } else if (Math.abs(value) >= 1000) {
+                                    return context.dataset.label + ': ' + (value / 1000).toFixed(1) + 'K';
+                                }
+                                return context.dataset.label + ': ' + value.toFixed(0);
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        stacked: true,
+                        grid: { display: false },
+                        ticks: { 
+                            color: '#6b7280',
+                            font: { size: 9 },
+                            maxRotation: 45
+                        }
+                    },
+                    y: {
+                        stacked: true,
+                        grid: { color: 'rgba(107, 114, 128, 0.2)' },
+                        ticks: { 
+                            color: '#6b7280',
+                            font: { size: 9 },
+                            callback: function(value) {
+                                if (Math.abs(value) >= 1000000) return (value / 1000000).toFixed(1) + 'M';
+                                if (Math.abs(value) >= 1000) return (value / 1000).toFixed(0) + 'K';
+                                return value;
+                            }
+                        }
+                    }
+                }
+            };
+            
+            // Base currency chart
+            bondChartBase = new Chart(ctxBase, {
+                type: 'bar',
+                data: {
+                    labels: baseLabels,
+                    datasets: [
+                        {
+                            label: 'Interest',
+                            data: baseInterest,
+                            backgroundColor: 'rgba(6, 182, 212, 0.8)',
+                            borderRadius: 2
+                        },
+                        {
+                            label: 'Principal',
+                            data: basePrincipal,
+                            backgroundColor: 'rgba(59, 130, 246, 0.8)',
+                            borderRadius: 2
+                        }
+                    ]
+                },
+                options: chartOptions
+            });
+            
+            // Hedged chart with hedge cost
+            bondChartTarget = new Chart(ctxTarget, {
+                type: 'bar',
+                data: {
+                    labels: hedgedLabels,
+                    datasets: [
+                        {
+                            label: 'Interest',
+                            data: hedgedInterest,
+                            backgroundColor: 'rgba(6, 182, 212, 0.8)',
+                            borderRadius: 2
+                        },
+                        {
+                            label: 'Principal',
+                            data: hedgedPrincipal,
+                            backgroundColor: 'rgba(34, 197, 94, 0.8)',
+                            borderRadius: 2
+                        },
+                        {
+                            label: 'Hedge Cost/Benefit',
+                            data: hedgedHedgeCost,
+                            backgroundColor: hedgedHedgeCost.map(v => v >= 0 ? 'rgba(34, 197, 94, 0.5)' : 'rgba(239, 68, 68, 0.6)'),
+                            borderRadius: 2
+                        }
+                    ]
+                },
+                options: chartOptions
+            });
         }
         
         /**
-         * Build the cash flow comparison table
+         * Build detailed amortization table
          */
-        function buildCashFlowTable(baseCashFlows, hedgedCashFlows, baseCurrency, targetCurrency, investment) {
+        function buildAmortizationTable(baseCashFlows, hedgedData, baseCurrency, targetCurrency, investment) {
             const tbody = document.getElementById('bondCashflowBody');
             tbody.innerHTML = '';
             
-            const maxPeriods = Math.max(baseCashFlows.length, hedgedCashFlows.length);
-            
             const formatNum = (n) => {
-                if (n >= 1000000) return (n/1000000).toFixed(2) + 'M';
-                if (n >= 1000) return (n/1000).toFixed(1) + 'K';
+                const absN = Math.abs(n);
+                if (absN >= 1000000) return (n / 1000000).toFixed(2) + 'M';
+                if (absN >= 1000) return (n / 1000).toFixed(1) + 'K';
                 return n.toFixed(0);
             };
             
-            // Add initial investment row
-            const investRow = document.createElement('tr');
-            investRow.innerHTML = `
-                <td style="color: var(--text-muted);">T=0 (Investment)</td>
-                <td style="color: var(--red);">-${formatNum(investment)}</td>
-                <td style="color: var(--red);">-${formatNum(investment)}</td>
-            `;
-            tbody.appendChild(investRow);
+            const maxPeriods = Math.max(baseCashFlows.length, hedgedData.netFlows.length);
             
-            // Add each period
+            let baseTotalInt = 0, baseTotalPrin = 0, baseTotalPmt = 0;
+            let hedgedTotalInt = 0, hedgedTotalPrin = 0, hedgedTotalHedge = 0, hedgedTotalNet = 0;
+            
             for (let i = 0; i < maxPeriods; i++) {
-                const baseCF = baseCashFlows[i];
-                const hedgedCF = hedgedCashFlows[i];
+                const base = baseCashFlows[i] || { interest: 0, principal: 0, payment: 0, year: 0 };
+                const hedged = hedgedData.netFlows[i] || { interest: 0, principal: 0, hedgeCost: 0, payment: 0, year: 0 };
+                
+                baseTotalInt += base.interest;
+                baseTotalPrin += base.principal;
+                baseTotalPmt += base.payment;
+                hedgedTotalInt += hedged.interest;
+                hedgedTotalPrin += hedged.principal;
+                hedgedTotalHedge += hedged.hedgeCost;
+                hedgedTotalNet += hedged.payment;
                 
                 const row = document.createElement('tr');
-                const yearLabel = baseCF ? `Year ${baseCF.year.toFixed(baseCF.year % 1 === 0 ? 0 : 1)}` : `Period ${i + 1}`;
+                const yearLabel = base.year ? `Year ${base.year.toFixed(base.year % 1 === 0 ? 0 : 1)}` : `Period ${i + 1}`;
+                
+                const hedgeCostColor = hedged.hedgeCost >= 0 ? 'var(--green)' : 'var(--red)';
+                const hedgeCostSign = hedged.hedgeCost >= 0 ? '+' : '';
                 
                 row.innerHTML = `
                     <td>${yearLabel}</td>
-                    <td style="color: var(--blue);">+${baseCF ? formatNum(baseCF.payment) : '0'}</td>
-                    <td style="color: var(--green);">+${hedgedCF ? formatNum(hedgedCF.payment) : '0'}</td>
+                    <td style="color: var(--cyan);">${formatNum(base.interest)}</td>
+                    <td style="color: var(--blue);">${formatNum(base.principal)}</td>
+                    <td style="color: var(--blue);">${formatNum(base.payment)}</td>
+                    <td style="color: var(--cyan);">${formatNum(hedged.interest)}</td>
+                    <td style="color: var(--green);">${formatNum(hedged.principal)}</td>
+                    <td style="color: ${hedgeCostColor};">${hedgeCostSign}${formatNum(hedged.hedgeCost)}</td>
+                    <td style="color: var(--green);">${formatNum(hedged.payment)}</td>
                 `;
                 tbody.appendChild(row);
             }
             
-            // Add total row
-            const baseTotalCash = baseCashFlows.reduce((sum, cf) => sum + cf.payment, 0);
-            const hedgedTotalCash = hedgedCashFlows.reduce((sum, cf) => sum + cf.payment, 0);
-            
+            // Total row
             const totalRow = document.createElement('tr');
+            totalRow.className = 'total-row';
+            const totalHedgeColor = hedgedTotalHedge >= 0 ? 'var(--green)' : 'var(--red)';
+            const totalHedgeSign = hedgedTotalHedge >= 0 ? '+' : '';
+            
             totalRow.innerHTML = `
-                <td><strong>Total Cash In</strong></td>
-                <td><strong>${formatNum(baseTotalCash)}</strong></td>
-                <td><strong>${formatNum(hedgedTotalCash)}</strong></td>
+                <td><strong>TOTAL</strong></td>
+                <td style="color: var(--cyan);"><strong>${formatNum(baseTotalInt)}</strong></td>
+                <td style="color: var(--blue);"><strong>${formatNum(baseTotalPrin)}</strong></td>
+                <td style="color: var(--blue);"><strong>${formatNum(baseTotalPmt)}</strong></td>
+                <td style="color: var(--cyan);"><strong>${formatNum(hedgedTotalInt)}</strong></td>
+                <td style="color: var(--green);"><strong>${formatNum(hedgedTotalPrin)}</strong></td>
+                <td style="color: ${totalHedgeColor};"><strong>${totalHedgeSign}${formatNum(hedgedTotalHedge)}</strong></td>
+                <td style="color: var(--green);"><strong>${formatNum(hedgedTotalNet)}</strong></td>
             `;
             tbody.appendChild(totalRow);
-            
-            // Add net profit row
-            const profitRow = document.createElement('tr');
-            profitRow.style.background = 'var(--bg-tertiary)';
-            const baseProfit = baseTotalCash - investment;
-            const hedgedProfit = hedgedTotalCash - investment;
-            profitRow.innerHTML = `
-                <td><strong>Net Profit</strong></td>
-                <td style="color: ${baseProfit >= 0 ? 'var(--blue)' : 'var(--red)'}"><strong>${baseProfit >= 0 ? '+' : ''}${formatNum(baseProfit)}</strong></td>
-                <td style="color: ${hedgedProfit >= 0 ? 'var(--green)' : 'var(--red)'}"><strong>${hedgedProfit >= 0 ? '+' : ''}${formatNum(hedgedProfit)}</strong></td>
-            `;
-            tbody.appendChild(profitRow);
         }
         
-        // Cash flow toggle
+        /**
+         * Export bond data to CSV (Excel compatible)
+         */
+        function exportBondData() {
+            if (!bondDataForExport) {
+                alert('Please calculate results first');
+                return;
+            }
+            
+            const d = bondDataForExport;
+            let csv = 'Bond Cash Flow Analysis Export\n';
+            csv += `Generated,${new Date().toISOString()}\n\n`;
+            
+            csv += 'PARAMETERS\n';
+            csv += `Base Currency,${d.baseCurrency}\n`;
+            csv += `Target Currency,${d.targetCurrency}\n`;
+            csv += `Tenor (Years),${d.tenor}\n`;
+            csv += `Face Value,${d.faceValue}\n`;
+            csv += `Bond Type,${d.bondType}\n`;
+            csv += `Payment Frequency,${d.frequency === 1 ? 'Annual' : d.frequency === 2 ? 'Semi-Annual' : d.frequency === 4 ? 'Quarterly' : 'Monthly'}\n`;
+            csv += `Base Coupon Rate,${(d.baseCouponRate * 100).toFixed(4)}%\n`;
+            csv += `Hedged Coupon Rate,${(d.hedgedCouponRate * 100).toFixed(4)}%\n`;
+            csv += `Hedge Cost (bps p.a.),${d.hedgeCostBps}\n\n`;
+            
+            csv += 'SUMMARY\n';
+            csv += `,${d.baseCurrency},${d.targetCurrency} (Hedged)\n`;
+            csv += `Total Proceeds,${d.baseMetrics.totalCashReceived.toFixed(2)},${d.hedgedMetrics.totalCashReceived.toFixed(2)}\n`;
+            csv += `Net Profit,${d.baseMetrics.nominalProfit.toFixed(2)},${d.hedgedMetrics.nominalProfit.toFixed(2)}\n`;
+            csv += `MOIC,${d.baseMetrics.moic.toFixed(4)},${d.hedgedMetrics.moic.toFixed(4)}\n`;
+            csv += `IRR,${(d.baseMetrics.irr * 100).toFixed(4)}%,${(d.hedgedMetrics.irr * 100).toFixed(4)}%\n\n`;
+            
+            csv += 'AMORTIZATION SCHEDULE\n';
+            csv += `Period,Year,${d.baseCurrency} Interest,${d.baseCurrency} Principal,${d.baseCurrency} Total,${d.targetCurrency} Interest,${d.targetCurrency} Principal,Hedge Cost,${d.targetCurrency} Net CF\n`;
+            
+            const maxLen = Math.max(d.baseCashFlows.length, d.hedgedCashFlowsWithCost.netFlows.length);
+            for (let i = 0; i < maxLen; i++) {
+                const base = d.baseCashFlows[i] || { interest: 0, principal: 0, payment: 0, year: 0, period: i + 1 };
+                const hedged = d.hedgedCashFlowsWithCost.netFlows[i] || { interest: 0, principal: 0, hedgeCost: 0, payment: 0 };
+                
+                csv += `${base.period},${base.year.toFixed(2)},${base.interest.toFixed(2)},${base.principal.toFixed(2)},${base.payment.toFixed(2)},`;
+                csv += `${hedged.interest.toFixed(2)},${hedged.principal.toFixed(2)},${hedged.hedgeCost.toFixed(2)},${hedged.payment.toFixed(2)}\n`;
+            }
+            
+            // Create and download file
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            const url = URL.createObjectURL(blob);
+            link.setAttribute('href', url);
+            link.setAttribute('download', `bond_analysis_${d.baseCurrency}_${d.targetCurrency}_${new Date().toISOString().slice(0,10)}.csv`);
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+        
+        // Event listeners for bond simulator
         document.getElementById('bondCashflowToggle')?.addEventListener('click', function() {
             const wrapper = document.getElementById('bondCashflowWrapper');
             const isExpanded = wrapper.classList.contains('show');
@@ -4335,7 +4716,8 @@
             }
         });
         
-        // Update bond simulator when config changes
+        document.getElementById('exportBondDataBtn')?.addEventListener('click', exportBondData);
+        
         ['bondType', 'bondFaceValue', 'bondFrequency'].forEach(id => {
             document.getElementById(id)?.addEventListener('change', updateBondSimulator);
         });
