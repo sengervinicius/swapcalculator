@@ -2018,10 +2018,21 @@
             border-bottom: 1px solid var(--border);
         }
         
+        .bond-sim-titles {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+        
         .bond-sim-title {
             font-size: 0.95rem;
             font-weight: 600;
             color: var(--text-primary);
+        }
+        
+        .bond-sim-subtitle {
+            font-size: 0.7rem;
+            color: var(--text-muted);
         }
         
         .bond-export-btn {
@@ -2180,12 +2191,22 @@
             text-align: center;
         }
         
-        .discount-field .price-field-value {
-            color: var(--green);
+        .discount-label {
+            color: var(--green) !important;
         }
         
-        .premium-field .price-field-value {
+        .discount-value {
+            color: var(--green);
+            background: rgba(34, 197, 94, 0.1);
+        }
+        
+        .premium-label {
+            color: var(--red) !important;
+        }
+        
+        .premium-value {
             color: var(--red);
+            background: rgba(239, 68, 68, 0.1);
         }
         
         .price-amount {
@@ -2378,8 +2399,14 @@
             font-size: 0.7rem;
         }
         
+        .schedule-table thead {
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+        
         .schedule-table th {
-            background: var(--bg-tertiary);
+            background: #1a1f2e;
             padding: 10px 8px;
             text-align: right;
             font-weight: 500;
@@ -2387,8 +2414,7 @@
             text-transform: uppercase;
             font-size: 0.55rem;
             letter-spacing: 0.3px;
-            position: sticky;
-            top: 0;
+            border-bottom: 1px solid var(--border);
         }
         
         .schedule-table th:first-child {
@@ -2396,19 +2422,32 @@
         }
         
         .schedule-table th.th-group.base {
-            background: rgba(59, 130, 246, 0.1);
+            background: #1a2536;
             color: var(--blue);
         }
         
         .schedule-table th.th-group.target {
-            background: rgba(34, 197, 94, 0.1);
+            background: #1a2e24;
             color: var(--green);
         }
         
         .schedule-table tr.sub-header th {
             font-size: 0.5rem;
             padding: 6px 8px;
-            top: 32px;
+            background: #1a1f2e;
+            border-bottom: 2px solid var(--border);
+        }
+        
+        .schedule-table tr.sub-header th:nth-child(2),
+        .schedule-table tr.sub-header th:nth-child(3),
+        .schedule-table tr.sub-header th:nth-child(4) {
+            background: #1a2536;
+        }
+        
+        .schedule-table tr.sub-header th:nth-child(5),
+        .schedule-table tr.sub-header th:nth-child(6),
+        .schedule-table tr.sub-header th:nth-child(7) {
+            background: #1a2e24;
         }
         
         .schedule-table td {
@@ -2836,7 +2875,10 @@
                                 <div class="bond-sim">
                                     <!-- Header -->
                                     <div class="bond-sim-header">
-                                        <div class="bond-sim-title">Cash Flow Simulator</div>
+                                        <div class="bond-sim-titles">
+                                            <div class="bond-sim-title">Cash Flow Simulator</div>
+                                            <div class="bond-sim-subtitle">Model bond returns across different structures and entry prices</div>
+                                        </div>
                                         <button class="bond-export-btn" id="exportBondDataBtn">
                                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
@@ -2884,12 +2926,12 @@
                                                         </div>
                                                     </div>
                                                     <div class="price-field discount-field" id="discountField">
-                                                        <span class="price-field-label">Discount</span>
-                                                        <div class="price-field-value" id="discountValue">0%</div>
+                                                        <span class="price-field-label discount-label">Discount</span>
+                                                        <div class="price-field-value discount-value" id="discountValue">0%</div>
                                                     </div>
                                                     <div class="price-field premium-field" id="premiumField" style="display: none;">
-                                                        <span class="price-field-label">Premium</span>
-                                                        <div class="price-field-value" id="premiumValue">0%</div>
+                                                        <span class="price-field-label premium-label">Premium</span>
+                                                        <div class="price-field-value premium-value" id="premiumValue">0%</div>
                                                     </div>
                                                 </div>
                                                 <div class="price-amount" id="priceDisplayAmount">$1,000,000</div>
@@ -2907,7 +2949,7 @@
                                             <div class="summary-metrics">
                                                 <div class="summary-metric main">
                                                     <span class="metric-value" id="bondBaseYTM">—</span>
-                                                    <span class="metric-label">YTM</span>
+                                                    <span class="metric-label">YTM (p.a.)</span>
                                                 </div>
                                                 <div class="summary-metric">
                                                     <span class="metric-value" id="bondBaseMOIC">—</span>
@@ -2927,7 +2969,7 @@
                                             <div class="summary-metrics">
                                                 <div class="summary-metric main">
                                                     <span class="metric-value" id="bondTargetYTM">—</span>
-                                                    <span class="metric-label">YTM</span>
+                                                    <span class="metric-label">YTM (p.a.)</span>
                                                 </div>
                                                 <div class="summary-metric">
                                                     <span class="metric-value" id="bondTargetMOIC">—</span>
