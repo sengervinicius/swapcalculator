@@ -1958,94 +1958,46 @@
             font-weight: 700;
         }
         
-        /* Breakeven Analysis */
-        .breakeven-container {
+        /* Bond Simulator */
+        .bond-simulator-container {
             background: var(--bg-tertiary);
             border: 1px solid var(--border);
             border-radius: 12px;
             padding: 20px;
         }
         
-        .breakeven-header {
+        .bond-simulator-header {
             display: flex;
             justify-content: space-between;
-            align-items: center;
+            align-items: flex-start;
             margin-bottom: 20px;
         }
         
-        .breakeven-title {
+        .bond-simulator-title {
             font-size: 1rem;
             font-weight: 600;
             color: var(--text-primary);
         }
         
-        .breakeven-subtitle {
+        .bond-simulator-subtitle {
             font-size: 0.75rem;
             color: var(--text-muted);
             margin-top: 4px;
         }
         
-        .breakeven-gauge {
-            position: relative;
-            height: 40px;
-            background: linear-gradient(to right, 
-                var(--green) 0%, 
-                var(--yellow) 50%, 
-                var(--red) 100%);
-            border-radius: 8px;
-            margin: 20px 0;
-            overflow: hidden;
-        }
-        
-        .breakeven-marker {
-            position: absolute;
-            top: -8px;
-            width: 4px;
-            height: 56px;
-            background: var(--text-primary);
-            border-radius: 2px;
-            transform: translateX(-50%);
-            box-shadow: 0 0 10px rgba(0,0,0,0.5);
-        }
-        
-        .breakeven-marker::before {
-            content: attr(data-label);
-            position: absolute;
-            top: -22px;
-            left: 50%;
-            transform: translateX(-50%);
-            font-size: 0.7rem;
-            font-weight: 600;
-            color: var(--text-primary);
-            white-space: nowrap;
-            background: var(--bg-card);
-            padding: 2px 6px;
-            border-radius: 4px;
-        }
-        
-        .breakeven-labels {
-            display: flex;
-            justify-content: space-between;
-            font-size: 0.75rem;
-            color: var(--text-muted);
-            margin-top: 8px;
-        }
-        
-        .breakeven-metrics {
+        .bond-config-grid {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
             gap: 16px;
-            margin-top: 20px;
+            margin-bottom: 20px;
         }
         
-        .breakeven-metric {
-            text-align: center;
-            padding: 16px;
-            background: var(--bg-input);
-            border-radius: 8px;
+        .bond-config-item {
+            display: flex;
+            flex-direction: column;
         }
         
-        .breakeven-metric-label {
+        .bond-config-item label {
             font-size: 0.7rem;
             color: var(--text-muted);
             margin-bottom: 6px;
@@ -2053,46 +2005,251 @@
             letter-spacing: 0.5px;
         }
         
-        .breakeven-metric-value {
+        .bond-config-item select,
+        .bond-config-item input {
+            padding: 10px 12px;
+            background: var(--bg-input);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-size: 0.85rem;
+            font-family: inherit;
+        }
+        
+        .bond-config-item select:focus,
+        .bond-config-item input:focus {
+            outline: none;
+            border-color: var(--green);
+        }
+        
+        .bond-results-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .bond-result-card {
+            background: var(--bg-input);
+            border-radius: 10px;
+            padding: 16px;
+            border: 1px solid var(--border);
+        }
+        
+        .bond-result-card.base {
+            border-left: 3px solid var(--blue);
+        }
+        
+        .bond-result-card.target {
+            border-left: 3px solid var(--green);
+        }
+        
+        .bond-result-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid var(--border);
+        }
+        
+        .bond-result-currency {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+        
+        .bond-result-flag {
+            font-size: 1.1rem;
+        }
+        
+        .bond-metrics-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+        
+        .bond-metric {
+            text-align: center;
+            padding: 10px;
+            background: var(--bg-tertiary);
+            border-radius: 6px;
+        }
+        
+        .bond-metric-label {
+            font-size: 0.65rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+            margin-bottom: 4px;
+        }
+        
+        .bond-metric-value {
             font-family: 'JetBrains Mono', monospace;
-            font-size: 1.2rem;
+            font-size: 1.1rem;
             font-weight: 700;
         }
         
-        .breakeven-metric-value.good { color: var(--green); }
-        .breakeven-metric-value.warning { color: var(--yellow); }
-        .breakeven-metric-value.danger { color: var(--red); }
+        .bond-metric-value.highlight {
+            color: var(--green);
+        }
         
-        .breakeven-verdict {
+        .bond-metric-value.base-color {
+            color: var(--blue);
+        }
+        
+        .bond-cashflow-section {
+            margin-top: 20px;
+        }
+        
+        .bond-cashflow-toggle {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            padding: 10px 0;
+            color: var(--text-secondary);
+            font-size: 0.8rem;
+            border: none;
+            background: none;
+            width: 100%;
+            text-align: left;
+        }
+        
+        .bond-cashflow-toggle:hover {
+            color: var(--green);
+        }
+        
+        .bond-cashflow-toggle svg {
+            transition: transform 0.2s;
+        }
+        
+        .bond-cashflow-toggle.expanded svg {
+            transform: rotate(90deg);
+        }
+        
+        .bond-cashflow-table-wrapper {
+            display: none;
+            margin-top: 12px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        
+        .bond-cashflow-table-wrapper.show {
+            display: block;
+        }
+        
+        .bond-cashflow-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.75rem;
+        }
+        
+        .bond-cashflow-table th {
+            background: var(--bg-input);
+            padding: 10px 8px;
+            text-align: right;
+            font-weight: 600;
+            color: var(--text-secondary);
+            position: sticky;
+            top: 0;
+            text-transform: uppercase;
+            font-size: 0.65rem;
+            letter-spacing: 0.3px;
+        }
+        
+        .bond-cashflow-table th:first-child {
+            text-align: left;
+        }
+        
+        .bond-cashflow-table td {
+            padding: 8px;
+            text-align: right;
+            border-bottom: 1px solid var(--border);
+            font-family: 'JetBrains Mono', monospace;
+        }
+        
+        .bond-cashflow-table td:first-child {
+            text-align: left;
+            color: var(--text-muted);
+        }
+        
+        .bond-cashflow-table tr:last-child {
+            font-weight: 600;
+            background: var(--bg-tertiary);
+        }
+        
+        .bond-cashflow-table tr:last-child td {
+            border-bottom: none;
+            color: var(--green);
+        }
+        
+        .bond-comparison-summary {
             margin-top: 20px;
             padding: 16px;
-            border-radius: 8px;
-            text-align: center;
-        }
-        
-        .breakeven-verdict.favorable {
-            background: rgba(34, 197, 94, 0.1);
+            background: linear-gradient(135deg, rgba(34, 197, 94, 0.08) 0%, rgba(6, 182, 212, 0.08) 100%);
             border: 1px solid var(--green);
+            border-radius: 10px;
         }
         
-        .breakeven-verdict.marginal {
-            background: rgba(234, 179, 8, 0.1);
-            border: 1px solid var(--yellow);
+        .bond-comparison-title {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 12px;
         }
         
-        .breakeven-verdict.unfavorable {
-            background: rgba(239, 68, 68, 0.1);
-            border: 1px solid var(--red);
+        .bond-comparison-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 0;
         }
         
-        .breakeven-verdict-text {
-            font-size: 0.9rem;
-            font-weight: 500;
+        .bond-comparison-row:not(:last-child) {
+            border-bottom: 1px solid var(--border);
         }
         
-        .breakeven-verdict.favorable .breakeven-verdict-text { color: var(--green); }
-        .breakeven-verdict.marginal .breakeven-verdict-text { color: var(--yellow); }
-        .breakeven-verdict.unfavorable .breakeven-verdict-text { color: var(--red); }
+        .bond-comparison-label {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+        
+        .bond-comparison-values {
+            display: flex;
+            gap: 20px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+        }
+        
+        .bond-comparison-value {
+            min-width: 80px;
+            text-align: right;
+        }
+        
+        .bond-comparison-value.base {
+            color: var(--blue);
+        }
+        
+        .bond-comparison-value.target {
+            color: var(--green);
+        }
+        
+        @media (max-width: 768px) {
+            .bond-config-grid {
+                grid-template-columns: 1fr 1fr;
+            }
+            
+            .bond-results-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .bond-comparison-values {
+                flex-direction: column;
+                gap: 4px;
+            }
+        }
         
         /* Hedge Cost History Chart */
         .history-container {
@@ -2142,10 +2299,6 @@
             }
             
             .compare-grid {
-                grid-template-columns: 1fr;
-            }
-            
-            .breakeven-metrics {
                 grid-template-columns: 1fr;
             }
         }
@@ -2445,13 +2598,13 @@
                                     </svg>
                                     Compare
                                 </button>
-                                <button class="analysis-tab" data-tab="breakeven">
+                                <button class="analysis-tab" data-tab="bond">
                                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;">
-                                        <circle cx="12" cy="12" r="10"></circle>
-                                        <line x1="12" y1="8" x2="12" y2="16"></line>
-                                        <line x1="8" y1="12" x2="16" y2="12"></line>
+                                        <rect x="2" y="3" width="20" height="18" rx="2"></rect>
+                                        <line x1="2" y1="9" x2="22" y2="9"></line>
+                                        <line x1="9" y1="3" x2="9" y2="21"></line>
                                     </svg>
-                                    Breakeven
+                                    Bond Simulator
                                 </button>
                                 <button class="analysis-tab" data-tab="history">
                                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;">
@@ -2468,48 +2621,154 @@
                                 </div>
                             </div>
                             
-                            <!-- Breakeven Analysis -->
-                            <div class="analysis-content" id="breakevenContent">
-                                <div class="breakeven-container">
-                                    <div class="breakeven-header">
+                            <!-- Bond Simulator -->
+                            <div class="analysis-content" id="bondContent">
+                                <div class="bond-simulator-container">
+                                    <div class="bond-simulator-header">
                                         <div>
-                                            <div class="breakeven-title">Hedge Cost Sensitivity</div>
-                                            <div class="breakeven-subtitle">How much can hedge costs change before the trade breaks even?</div>
+                                            <div class="bond-simulator-title">Bond Cash Flow Simulator</div>
+                                            <div class="bond-simulator-subtitle">See actual cash flows and total returns for a bond investment</div>
                                         </div>
                                     </div>
                                     
-                                    <div class="breakeven-explanation" style="margin: 16px 0; padding: 12px; background: var(--bg-input); border-radius: 8px; font-size: 0.8rem;">
-                                        <div style="color: var(--text-muted); margin-bottom: 8px;">
-                                            <strong style="color: var(--text-secondary);">What this shows:</strong>
+                                    <div class="bond-config-grid">
+                                        <div class="bond-config-item">
+                                            <label>Bond Type</label>
+                                            <select id="bondType">
+                                                <option value="bullet">Bullet (Principal at maturity)</option>
+                                                <option value="amortizing">Fully Amortizing</option>
+                                                <option value="zero">Zero Coupon</option>
+                                            </select>
                                         </div>
-                                        <div style="color: var(--text-muted); line-height: 1.5;">
-                                            The <strong style="color: var(--green);">breakeven hedge cost</strong> is the point where the hedged return equals the base return.
-                                            If actual hedge costs go beyond this point, the trade becomes unprofitable.
-                                            The <strong style="color: var(--cyan);">cushion</strong> shows how much room you have before reaching breakeven.
+                                        <div class="bond-config-item">
+                                            <label>Face Value</label>
+                                            <input type="number" id="bondFaceValue" value="1000000" min="1000" step="1000">
                                         </div>
-                                    </div>
-                                    
-                                    <div class="breakeven-metrics">
-                                        <div class="breakeven-metric">
-                                            <div class="breakeven-metric-label">Current Hedge Cost</div>
-                                            <div class="breakeven-metric-value" id="currentHedgeCostMetric">—</div>
-                                            <div class="breakeven-metric-note" style="font-size: 0.65rem; color: var(--text-muted); margin-top: 4px;">Applied to calculation</div>
-                                        </div>
-                                        <div class="breakeven-metric">
-                                            <div class="breakeven-metric-label">Breakeven Point</div>
-                                            <div class="breakeven-metric-value" id="breakevenCostMetric">—</div>
-                                            <div class="breakeven-metric-note" style="font-size: 0.65rem; color: var(--text-muted); margin-top: 4px;">Hedged = Base return</div>
-                                        </div>
-                                        <div class="breakeven-metric">
-                                            <div class="breakeven-metric-label">Safety Margin</div>
-                                            <div class="breakeven-metric-value" id="cushionMetric">—</div>
-                                            <div class="breakeven-metric-note" style="font-size: 0.65rem; color: var(--text-muted); margin-top: 4px;">Room before breakeven</div>
+                                        <div class="bond-config-item">
+                                            <label>Payment Frequency</label>
+                                            <select id="bondFrequency">
+                                                <option value="2">Semi-Annual</option>
+                                                <option value="1">Annual</option>
+                                                <option value="4">Quarterly</option>
+                                                <option value="12">Monthly</option>
+                                            </select>
                                         </div>
                                     </div>
                                     
-                                    <div class="breakeven-verdict" id="breakevenVerdict">
-                                        <div class="breakeven-verdict-text" id="breakevenVerdictText">
-                                            Calculate results to see breakeven analysis
+                                    <div class="bond-results-grid" id="bondResultsGrid">
+                                        <!-- Base Currency Card -->
+                                        <div class="bond-result-card base">
+                                            <div class="bond-result-header">
+                                                <span class="bond-result-currency" id="bondBaseCurrency">Base Currency</span>
+                                                <span class="bond-result-flag" id="bondBaseFlag">💵</span>
+                                            </div>
+                                            <div class="bond-metrics-grid">
+                                                <div class="bond-metric">
+                                                    <div class="bond-metric-label">Total Cash In</div>
+                                                    <div class="bond-metric-value base-color" id="bondBaseTotalCash">—</div>
+                                                </div>
+                                                <div class="bond-metric">
+                                                    <div class="bond-metric-label">MOIC</div>
+                                                    <div class="bond-metric-value base-color" id="bondBaseMOIC">—</div>
+                                                </div>
+                                                <div class="bond-metric">
+                                                    <div class="bond-metric-label">IRR</div>
+                                                    <div class="bond-metric-value base-color" id="bondBaseIRR">—</div>
+                                                </div>
+                                                <div class="bond-metric">
+                                                    <div class="bond-metric-label">Profit</div>
+                                                    <div class="bond-metric-value base-color" id="bondBaseProfit">—</div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        
+                                        <!-- Target Currency Card -->
+                                        <div class="bond-result-card target">
+                                            <div class="bond-result-header">
+                                                <span class="bond-result-currency" id="bondTargetCurrency">Target Currency</span>
+                                                <span class="bond-result-flag" id="bondTargetFlag">🌍</span>
+                                            </div>
+                                            <div class="bond-metrics-grid">
+                                                <div class="bond-metric">
+                                                    <div class="bond-metric-label">Total Cash In</div>
+                                                    <div class="bond-metric-value highlight" id="bondTargetTotalCash">—</div>
+                                                </div>
+                                                <div class="bond-metric">
+                                                    <div class="bond-metric-label">MOIC</div>
+                                                    <div class="bond-metric-value highlight" id="bondTargetMOIC">—</div>
+                                                </div>
+                                                <div class="bond-metric">
+                                                    <div class="bond-metric-label">IRR</div>
+                                                    <div class="bond-metric-value highlight" id="bondTargetIRR">—</div>
+                                                </div>
+                                                <div class="bond-metric">
+                                                    <div class="bond-metric-label">Profit</div>
+                                                    <div class="bond-metric-value highlight" id="bondTargetProfit">—</div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- Comparison Summary -->
+                                    <div class="bond-comparison-summary" id="bondComparisonSummary" style="display: none;">
+                                        <div class="bond-comparison-title">Side-by-Side Comparison</div>
+                                        <div class="bond-comparison-row">
+                                            <span class="bond-comparison-label">Investment (Face Value)</span>
+                                            <div class="bond-comparison-values">
+                                                <span class="bond-comparison-value base" id="bondCompareInvestBase">—</span>
+                                                <span class="bond-comparison-value target" id="bondCompareInvestTarget">—</span>
+                                            </div>
+                                        </div>
+                                        <div class="bond-comparison-row">
+                                            <span class="bond-comparison-label">Total Cash Received</span>
+                                            <div class="bond-comparison-values">
+                                                <span class="bond-comparison-value base" id="bondCompareCashBase">—</span>
+                                                <span class="bond-comparison-value target" id="bondCompareCashTarget">—</span>
+                                            </div>
+                                        </div>
+                                        <div class="bond-comparison-row">
+                                            <span class="bond-comparison-label">Net Profit</span>
+                                            <div class="bond-comparison-values">
+                                                <span class="bond-comparison-value base" id="bondCompareProfitBase">—</span>
+                                                <span class="bond-comparison-value target" id="bondCompareProfitTarget">—</span>
+                                            </div>
+                                        </div>
+                                        <div class="bond-comparison-row">
+                                            <span class="bond-comparison-label">MOIC (Multiple)</span>
+                                            <div class="bond-comparison-values">
+                                                <span class="bond-comparison-value base" id="bondCompareMOICBase">—</span>
+                                                <span class="bond-comparison-value target" id="bondCompareMOICTarget">—</span>
+                                            </div>
+                                        </div>
+                                        <div class="bond-comparison-row">
+                                            <span class="bond-comparison-label">Additional Profit (Hedged)</span>
+                                            <div class="bond-comparison-values">
+                                                <span class="bond-comparison-value" style="color: var(--green);" id="bondExtraProfit">—</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- Cash Flow Toggle -->
+                                    <div class="bond-cashflow-section">
+                                        <button class="bond-cashflow-toggle" id="bondCashflowToggle">
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                <polyline points="9 18 15 12 9 6"></polyline>
+                                            </svg>
+                                            View detailed cash flow schedule
+                                        </button>
+                                        <div class="bond-cashflow-table-wrapper" id="bondCashflowWrapper">
+                                            <table class="bond-cashflow-table">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Period</th>
+                                                        <th id="cfHeaderBase">Base Ccy</th>
+                                                        <th id="cfHeaderTarget">Target Ccy</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody id="bondCashflowBody">
+                                                    <!-- Populated dynamically -->
+                                                </tbody>
+                                            </table>
                                         </div>
                                     </div>
                                 </div>
@@ -3648,7 +3907,7 @@
             document.getElementById('analysisSection').style.display = 'block';
             
             updateCompareCards();
-            updateBreakevenAnalysis();
+            updateBondSimulator();
             updateTenorAnalysisChart();
         }
         
@@ -3727,80 +3986,213 @@
             });
         }
         
-        // Breakeven Analysis
-        function updateBreakevenAnalysis() {
+        // Bond Simulator
+        function updateBondSimulator() {
             const result = calculatedResults[0];
             if (!result) return;
             
-            const hasHedgingCost = result.hedging_cost_bps !== null && result.hedging_cost_bps !== undefined;
-            const currentHedgeCost = hasHedgingCost ? result.hedging_cost_bps : 0;
+            const baseCurrency = document.getElementById('baseCurrency').value;
+            const targetCurrency = result.ccy_target;
+            const tenor = result.tenor_years;
+            const faceValue = parseFloat(document.getElementById('bondFaceValue').value) || 1000000;
+            const bondType = document.getElementById('bondType').value;
+            const frequency = parseInt(document.getElementById('bondFrequency').value) || 2;
             
-            // The hedged return BEFORE applying hedge cost
-            const hedgedReturnPreCost = result.usd_equiv_pp;
-            // The base return (what you'd get without hedging)
-            const baseReturn = result.all_in_base_pp;
+            // Base return (in base currency)
+            const baseReturnRate = result.all_in_base_pp / 100; // Convert to decimal
+            // Hedged return (what you get in target currency terms, converted back)
+            const hedgedReturnRate = result.hedged_return_pp / 100;
             
-            // Breakeven hedge cost = the cost at which hedged_return_net equals base_return
-            // hedged_return_net = hedged_return_pre_cost + hedge_cost_pct
-            // At breakeven: hedged_return_pre_cost + breakeven_cost_pct = base_return
-            // So: breakeven_cost_pct = base_return - hedged_return_pre_cost
-            // In bps: breakeven_cost_bps = (base_return - hedged_return_pre_cost) * 100
-            const breakevenCostBps = (baseReturn - hedgedReturnPreCost) * 100;
+            // Currency flags
+            const flags = {
+                'BRL': '🇧🇷', 'USD': '🇺🇸', 'EUR': '🇪🇺', 'GBP': '🇬🇧', 
+                'JPY': '🇯🇵', 'CHF': '🇨🇭', 'ARS': '🇦🇷', 'CNY': '🇨🇳',
+                'CAD': '🇨🇦', 'AUD': '🇦🇺'
+            };
             
-            // Safety margin = difference between current cost and breakeven
-            // If current cost is BETTER than breakeven (higher/less negative), margin is positive
-            const safetyMarginBps = currentHedgeCost - breakevenCostBps;
+            // Update currency labels
+            document.getElementById('bondBaseCurrency').textContent = `${baseCurrency} (Base)`;
+            document.getElementById('bondTargetCurrency').textContent = `${targetCurrency} (Hedged)`;
+            document.getElementById('bondBaseFlag').textContent = flags[baseCurrency] || '💵';
+            document.getElementById('bondTargetFlag').textContent = flags[targetCurrency] || '🌍';
+            document.getElementById('cfHeaderBase').textContent = baseCurrency;
+            document.getElementById('cfHeaderTarget').textContent = `${targetCurrency} (Hedged)`;
             
-            // Update metrics display
-            const currentEl = document.getElementById('currentHedgeCostMetric');
-            currentEl.textContent = `${currentHedgeCost >= 0 ? '+' : ''}${currentHedgeCost.toFixed(0)} bps`;
-            // Color based on whether cost is helping (positive) or hurting (negative)
-            if (currentHedgeCost > 0) {
-                currentEl.className = 'breakeven-metric-value good';
-            } else if (currentHedgeCost > -100) {
-                currentEl.className = 'breakeven-metric-value warning';
-            } else {
-                currentEl.className = 'breakeven-metric-value danger';
-            }
+            // Calculate cash flows
+            const baseCashFlows = calculateBondCashFlows(faceValue, baseReturnRate, tenor, bondType, frequency);
+            const targetCashFlows = calculateBondCashFlows(faceValue, hedgedReturnRate, tenor, bondType, frequency);
             
-            const breakevenEl = document.getElementById('breakevenCostMetric');
-            breakevenEl.textContent = `${breakevenCostBps >= 0 ? '+' : ''}${breakevenCostBps.toFixed(0)} bps`;
-            breakevenEl.className = 'breakeven-metric-value'; // Neutral color for reference point
+            // Calculate totals
+            const baseTotalCash = baseCashFlows.reduce((sum, cf) => sum + cf.payment, 0);
+            const targetTotalCash = targetCashFlows.reduce((sum, cf) => sum + cf.payment, 0);
             
-            const marginEl = document.getElementById('cushionMetric');
-            marginEl.textContent = `${safetyMarginBps >= 0 ? '+' : ''}${safetyMarginBps.toFixed(0)} bps`;
-            marginEl.className = 'breakeven-metric-value ' + (safetyMarginBps > 100 ? 'good' : safetyMarginBps > 0 ? 'warning' : 'danger');
+            const baseProfit = baseTotalCash - faceValue;
+            const targetProfit = targetTotalCash - faceValue;
             
-            // Update verdict
-            const verdictEl = document.getElementById('breakevenVerdict');
-            const verdictTextEl = document.getElementById('breakevenVerdictText');
+            const baseMOIC = baseTotalCash / faceValue;
+            const targetMOIC = targetTotalCash / faceValue;
             
-            if (safetyMarginBps > 100) {
-                verdictEl.className = 'breakeven-verdict favorable';
-                verdictTextEl.innerHTML = `
-                    <strong>Trade is FAVORABLE</strong><br>
-                    <span style="font-size: 0.85rem; opacity: 0.9;">
-                        You have ${safetyMarginBps.toFixed(0)} bps of cushion. Hedge costs would need to worsen by this amount before the trade breaks even.
-                    </span>
-                `;
-            } else if (safetyMarginBps > 0) {
-                verdictEl.className = 'breakeven-verdict marginal';
-                verdictTextEl.innerHTML = `
-                    <strong>Trade is MARGINAL</strong><br>
-                    <span style="font-size: 0.85rem; opacity: 0.9;">
-                        Only ${safetyMarginBps.toFixed(0)} bps margin before breakeven. Consider if the pickup justifies the risk.
-                    </span>
-                `;
-            } else {
-                verdictEl.className = 'breakeven-verdict unfavorable';
-                verdictTextEl.innerHTML = `
-                    <strong>Trade is UNDERWATER</strong><br>
-                    <span style="font-size: 0.85rem; opacity: 0.9;">
-                        Current hedge cost exceeds breakeven by ${Math.abs(safetyMarginBps).toFixed(0)} bps. The hedged return is worse than staying in base currency.
-                    </span>
-                `;
-            }
+            // IRR is the input rate for bullet/zero, need to calculate for amortizing
+            const baseIRR = baseReturnRate * 100;
+            const targetIRR = hedgedReturnRate * 100;
+            
+            // Format numbers
+            const formatCurrency = (num) => {
+                if (Math.abs(num) >= 1000000) {
+                    return (num / 1000000).toFixed(2) + 'M';
+                } else if (Math.abs(num) >= 1000) {
+                    return (num / 1000).toFixed(1) + 'K';
+                }
+                return num.toFixed(0);
+            };
+            
+            // Update Base card
+            document.getElementById('bondBaseTotalCash').textContent = formatCurrency(baseTotalCash);
+            document.getElementById('bondBaseMOIC').textContent = baseMOIC.toFixed(3) + 'x';
+            document.getElementById('bondBaseIRR').textContent = baseIRR.toFixed(2) + '%';
+            document.getElementById('bondBaseProfit').textContent = formatCurrency(baseProfit);
+            
+            // Update Target card
+            document.getElementById('bondTargetTotalCash').textContent = formatCurrency(targetTotalCash);
+            document.getElementById('bondTargetMOIC').textContent = targetMOIC.toFixed(3) + 'x';
+            document.getElementById('bondTargetIRR').textContent = targetIRR.toFixed(2) + '%';
+            document.getElementById('bondTargetProfit').textContent = formatCurrency(targetProfit);
+            
+            // Update comparison summary
+            document.getElementById('bondComparisonSummary').style.display = 'block';
+            document.getElementById('bondCompareInvestBase').textContent = formatCurrency(faceValue) + ' ' + baseCurrency;
+            document.getElementById('bondCompareInvestTarget').textContent = formatCurrency(faceValue) + ' ' + baseCurrency;
+            document.getElementById('bondCompareCashBase').textContent = formatCurrency(baseTotalCash) + ' ' + baseCurrency;
+            document.getElementById('bondCompareCashTarget').textContent = formatCurrency(targetTotalCash) + ' ' + baseCurrency;
+            document.getElementById('bondCompareProfitBase').textContent = formatCurrency(baseProfit) + ' ' + baseCurrency;
+            document.getElementById('bondCompareProfitTarget').textContent = formatCurrency(targetProfit) + ' ' + baseCurrency;
+            document.getElementById('bondCompareMOICBase').textContent = baseMOIC.toFixed(3) + 'x';
+            document.getElementById('bondCompareMOICTarget').textContent = targetMOIC.toFixed(3) + 'x';
+            
+            const extraProfit = targetProfit - baseProfit;
+            const extraProfitEl = document.getElementById('bondExtraProfit');
+            extraProfitEl.textContent = (extraProfit >= 0 ? '+' : '') + formatCurrency(extraProfit) + ' ' + baseCurrency;
+            extraProfitEl.style.color = extraProfit >= 0 ? 'var(--green)' : 'var(--red)';
+            
+            // Build cash flow table
+            buildCashFlowTable(baseCashFlows, targetCashFlows, baseCurrency, targetCurrency);
         }
+        
+        function calculateBondCashFlows(faceValue, annualRate, tenorYears, bondType, frequency) {
+            const cashFlows = [];
+            const periodsPerYear = frequency;
+            const totalPeriods = Math.round(tenorYears * periodsPerYear);
+            const periodRate = annualRate / periodsPerYear;
+            
+            if (bondType === 'zero') {
+                // Zero coupon: no payments until maturity
+                const maturityValue = faceValue * Math.pow(1 + annualRate, tenorYears);
+                cashFlows.push({
+                    period: totalPeriods,
+                    year: tenorYears,
+                    interest: maturityValue - faceValue,
+                    principal: faceValue,
+                    payment: maturityValue,
+                    balance: 0
+                });
+            } else if (bondType === 'bullet') {
+                // Bullet: interest payments + principal at end
+                const couponPayment = faceValue * periodRate;
+                
+                for (let i = 1; i <= totalPeriods; i++) {
+                    const isLast = i === totalPeriods;
+                    const principalPayment = isLast ? faceValue : 0;
+                    cashFlows.push({
+                        period: i,
+                        year: i / periodsPerYear,
+                        interest: couponPayment,
+                        principal: principalPayment,
+                        payment: couponPayment + principalPayment,
+                        balance: isLast ? 0 : faceValue
+                    });
+                }
+            } else if (bondType === 'amortizing') {
+                // Fully amortizing: PMT formula
+                const pmt = faceValue * (periodRate * Math.pow(1 + periodRate, totalPeriods)) / 
+                           (Math.pow(1 + periodRate, totalPeriods) - 1);
+                
+                let balance = faceValue;
+                for (let i = 1; i <= totalPeriods; i++) {
+                    const interestPayment = balance * periodRate;
+                    const principalPayment = pmt - interestPayment;
+                    balance = Math.max(0, balance - principalPayment);
+                    
+                    cashFlows.push({
+                        period: i,
+                        year: i / periodsPerYear,
+                        interest: interestPayment,
+                        principal: principalPayment,
+                        payment: pmt,
+                        balance: balance
+                    });
+                }
+            }
+            
+            return cashFlows;
+        }
+        
+        function buildCashFlowTable(baseCashFlows, targetCashFlows, baseCurrency, targetCurrency) {
+            const tbody = document.getElementById('bondCashflowBody');
+            tbody.innerHTML = '';
+            
+            const maxPeriods = Math.max(baseCashFlows.length, targetCashFlows.length);
+            
+            let baseCumulative = 0;
+            let targetCumulative = 0;
+            
+            const formatNum = (n) => n >= 1000 ? (n/1000).toFixed(1) + 'K' : n.toFixed(0);
+            
+            for (let i = 0; i < maxPeriods; i++) {
+                const baseCF = baseCashFlows[i] || { payment: 0, year: 0 };
+                const targetCF = targetCashFlows[i] || { payment: 0, year: 0 };
+                
+                baseCumulative += baseCF.payment;
+                targetCumulative += targetCF.payment;
+                
+                const row = document.createElement('tr');
+                const yearLabel = baseCF.year ? `Year ${baseCF.year.toFixed(1)}` : `Period ${i + 1}`;
+                
+                row.innerHTML = `
+                    <td>${yearLabel}</td>
+                    <td style="color: var(--blue);">${formatNum(baseCF.payment)}</td>
+                    <td style="color: var(--green);">${formatNum(targetCF.payment)}</td>
+                `;
+                tbody.appendChild(row);
+            }
+            
+            // Add total row
+            const totalRow = document.createElement('tr');
+            totalRow.innerHTML = `
+                <td><strong>TOTAL</strong></td>
+                <td>${formatNum(baseCumulative)}</td>
+                <td>${formatNum(targetCumulative)}</td>
+            `;
+            tbody.appendChild(totalRow);
+        }
+        
+        // Cash flow toggle
+        document.getElementById('bondCashflowToggle')?.addEventListener('click', function() {
+            const wrapper = document.getElementById('bondCashflowWrapper');
+            const isExpanded = wrapper.classList.contains('show');
+            
+            if (isExpanded) {
+                wrapper.classList.remove('show');
+                this.classList.remove('expanded');
+            } else {
+                wrapper.classList.add('show');
+                this.classList.add('expanded');
+            }
+        });
+        
+        // Update bond simulator when config changes
+        ['bondType', 'bondFaceValue', 'bondFrequency'].forEach(id => {
+            document.getElementById(id)?.addEventListener('change', updateBondSimulator);
+        });
         
         // Tenor Analysis Chart
         async function updateTenorAnalysisChart() {
