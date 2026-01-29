@@ -2113,93 +2113,86 @@
         
         /* Price Control */
         .price-config {
-            flex: 1;
-            max-width: 280px;
+            min-width: 200px;
         }
         
-        .price-control {
+        .price-input-row {
+            display: flex;
+            align-items: stretch;
+            gap: 8px;
+        }
+        
+        .price-field {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        
+        .price-field-label {
+            font-size: 0.55rem;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+            color: var(--text-muted);
+        }
+        
+        .price-field-input {
             display: flex;
             align-items: center;
-            gap: 12px;
-        }
-        
-        .price-slider {
-            flex: 1;
-            -webkit-appearance: none;
-            height: 6px;
-            background: var(--bg-input);
-            border-radius: 3px;
-            outline: none;
-        }
-        
-        .price-slider::-webkit-slider-thumb {
-            -webkit-appearance: none;
-            width: 18px;
-            height: 18px;
-            background: var(--green);
-            border-radius: 50%;
-            cursor: pointer;
-            border: 2px solid var(--bg-secondary);
-            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-            transition: transform 0.15s;
-        }
-        
-        .price-slider::-webkit-slider-thumb:hover {
-            transform: scale(1.1);
-        }
-        
-        .price-slider::-moz-range-thumb {
-            width: 18px;
-            height: 18px;
-            background: var(--green);
-            border-radius: 50%;
-            cursor: pointer;
-            border: 2px solid var(--bg-secondary);
-        }
-        
-        .price-value-wrap {
-            display: flex;
-            align-items: center;
+            gap: 4px;
+            padding: 6px 10px;
             background: var(--bg-input);
             border: 1px solid var(--border);
             border-radius: 6px;
-            padding: 4px 8px;
         }
         
-        .price-value-input {
-            width: 42px;
-            padding: 4px;
+        .price-field-input:focus-within {
+            border-color: var(--green);
+        }
+        
+        .price-field-input input {
+            width: 50px;
             background: transparent;
             border: none;
-            color: var(--green);
+            color: var(--text-primary);
             font-family: 'JetBrains Mono', monospace;
             font-size: 0.85rem;
             font-weight: 600;
             text-align: right;
         }
         
-        .price-value-input:focus {
+        .price-field-input input:focus {
             outline: none;
         }
         
-        .price-pct {
+        .price-field-input span {
             color: var(--text-muted);
             font-size: 0.75rem;
         }
         
-        .price-labels {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-top: 6px;
-            font-size: 0.6rem;
-            color: var(--text-muted);
+        .price-field-value {
+            padding: 6px 12px;
+            background: var(--bg-tertiary);
+            border-radius: 6px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+            font-weight: 600;
+            min-width: 60px;
+            text-align: center;
         }
         
-        .price-display {
+        .discount-field .price-field-value {
+            color: var(--green);
+        }
+        
+        .premium-field .price-field-value {
+            color: var(--red);
+        }
+        
+        .price-amount {
+            margin-top: 6px;
             font-family: 'JetBrains Mono', monospace;
             font-size: 0.7rem;
-            color: var(--text-secondary);
+            color: var(--text-muted);
         }
         
         /* Summary Section */
@@ -2882,18 +2875,24 @@
                                             </div>
                                             <div class="config-item price-config">
                                                 <label>Purchase Price</label>
-                                                <div class="price-control">
-                                                    <input type="range" id="bondPriceSlider" min="80" max="120" value="100" class="price-slider">
-                                                    <div class="price-value-wrap">
-                                                        <input type="number" id="bondPriceCustom" value="100" min="50" max="150" class="price-value-input">
-                                                        <span class="price-pct">%</span>
+                                                <div class="price-input-row">
+                                                    <div class="price-field">
+                                                        <span class="price-field-label">Price</span>
+                                                        <div class="price-field-input">
+                                                            <input type="number" id="bondPriceCustom" value="100" min="1" max="200" step="0.5">
+                                                            <span>%</span>
+                                                        </div>
+                                                    </div>
+                                                    <div class="price-field discount-field" id="discountField">
+                                                        <span class="price-field-label">Discount</span>
+                                                        <div class="price-field-value" id="discountValue">0%</div>
+                                                    </div>
+                                                    <div class="price-field premium-field" id="premiumField" style="display: none;">
+                                                        <span class="price-field-label">Premium</span>
+                                                        <div class="price-field-value" id="premiumValue">0%</div>
                                                     </div>
                                                 </div>
-                                                <div class="price-labels">
-                                                    <span>Discount</span>
-                                                    <span class="price-display" id="priceDisplayAmount">$1,000,000</span>
-                                                    <span>Premium</span>
-                                                </div>
+                                                <div class="price-amount" id="priceDisplayAmount">$1,000,000</div>
                                             </div>
                                         </div>
                                     </div>
@@ -4205,34 +4204,54 @@
         let bondCashFlowChart = null;
         let currentPricePercent = 100;
         
-        // Price slider and input sync
-        const priceSlider = document.getElementById('bondPriceSlider');
+        // Price input handler
         const priceInput = document.getElementById('bondPriceCustom');
-        const priceDisplay = document.getElementById('priceDisplayAmount');
         
         function updatePriceDisplay() {
             const faceValue = parseFloat(document.getElementById('bondFaceValue').value) || 1000000;
             const purchasePrice = faceValue * (currentPricePercent / 100);
+            
+            const priceDisplay = document.getElementById('priceDisplayAmount');
             if (priceDisplay) {
                 priceDisplay.textContent = '$' + purchasePrice.toLocaleString('en-US', { maximumFractionDigits: 0 });
             }
+            
+            // Update discount/premium display
+            const discountField = document.getElementById('discountField');
+            const premiumField = document.getElementById('premiumField');
+            const discountValue = document.getElementById('discountValue');
+            const premiumValue = document.getElementById('premiumValue');
+            
+            if (currentPricePercent < 100) {
+                // Discount
+                const discount = 100 - currentPricePercent;
+                discountField.style.display = 'flex';
+                premiumField.style.display = 'none';
+                discountValue.textContent = discount.toFixed(1) + '%';
+            } else if (currentPricePercent > 100) {
+                // Premium
+                const premium = currentPricePercent - 100;
+                discountField.style.display = 'none';
+                premiumField.style.display = 'flex';
+                premiumValue.textContent = premium.toFixed(1) + '%';
+            } else {
+                // Par
+                discountField.style.display = 'flex';
+                premiumField.style.display = 'none';
+                discountValue.textContent = '0%';
+            }
         }
-        
-        priceSlider?.addEventListener('input', function() {
-            currentPricePercent = parseFloat(this.value);
-            if (priceInput) priceInput.value = currentPricePercent;
-            updatePriceDisplay();
-            if (calculatedResults.length > 0) updateBondSimulator();
-        });
         
         priceInput?.addEventListener('input', function() {
             currentPricePercent = parseFloat(this.value) || 100;
-            if (priceSlider) priceSlider.value = Math.min(120, Math.max(80, currentPricePercent));
             updatePriceDisplay();
             if (calculatedResults.length > 0) updateBondSimulator();
         });
         
-        document.getElementById('bondFaceValue')?.addEventListener('input', updatePriceDisplay);
+        document.getElementById('bondFaceValue')?.addEventListener('input', function() {
+            updatePriceDisplay();
+            if (calculatedResults.length > 0) updateBondSimulator();
+        });
         
         function updateBondSimulator() {
             const result = calculatedResults[0];
@@ -4468,7 +4487,7 @@
         }
         
         /**
-         * Render unified cash flow chart showing both scenarios with initial investment
+         * Render unified cash flow chart - professional styling
          */
         function renderUnifiedCashFlowChart(baseCashFlows, hedgedCashFlows, purchasePrice, baseCurrency, targetCurrency, tenor) {
             const ctx = document.getElementById('bondCashFlowChart');
@@ -4477,16 +4496,30 @@
             // Destroy existing chart
             if (bondCashFlowChart) bondCashFlowChart.destroy();
             
+            // Format number with parentheses for negatives
+            const formatValue = (value) => {
+                const absVal = Math.abs(value);
+                let formatted;
+                if (absVal >= 1000000) {
+                    formatted = (absVal / 1000000).toFixed(2) + 'M';
+                } else if (absVal >= 1000) {
+                    formatted = (absVal / 1000).toFixed(1) + 'K';
+                } else {
+                    formatted = absVal.toFixed(0);
+                }
+                return value < 0 ? `(${formatted})` : formatted;
+            };
+            
             // Build labels: Year 0 (investment) + all cash flow years
             const years = new Set();
             baseCashFlows.forEach(cf => years.add(cf.year));
             hedgedCashFlows.forEach(cf => years.add(cf.year));
             const sortedYears = Array.from(years).sort((a, b) => a - b);
             
-            // Create labels with Year 0 for investment
+            // Create labels
             const labels = ['Y0', ...sortedYears.map(y => `Y${y % 1 === 0 ? y : y.toFixed(1)}`)];
             
-            // Prepare data arrays (investment + cash flows)
+            // Prepare data arrays
             const baseInterest = [0, ...sortedYears.map(y => {
                 const cf = baseCashFlows.find(c => c.year === y);
                 return cf ? cf.interest : 0;
@@ -4507,7 +4540,7 @@
                 return cf ? cf.principal : 0;
             })];
             
-            // Investment bar (negative, shown at Year 0)
+            // Investment (negative at Year 0)
             const investmentData = [-purchasePrice, ...sortedYears.map(() => 0)];
             
             bondCashFlowChart = new Chart(ctx, {
@@ -4518,47 +4551,47 @@
                         {
                             label: 'Investment',
                             data: investmentData,
-                            backgroundColor: 'rgba(239, 68, 68, 0.85)',
-                            borderRadius: 4,
+                            backgroundColor: '#ef4444',
+                            borderRadius: 3,
                             stack: 'base',
-                            barPercentage: 0.35,
-                            categoryPercentage: 0.8
+                            barPercentage: 0.4,
+                            categoryPercentage: 0.85
                         },
                         {
                             label: `${baseCurrency} Interest`,
                             data: baseInterest,
-                            backgroundColor: 'rgba(6, 182, 212, 0.75)',
-                            borderRadius: 4,
+                            backgroundColor: '#06b6d4',
+                            borderRadius: 3,
                             stack: 'base',
-                            barPercentage: 0.35,
-                            categoryPercentage: 0.8
+                            barPercentage: 0.4,
+                            categoryPercentage: 0.85
                         },
                         {
                             label: `${baseCurrency} Principal`,
                             data: basePrincipal,
-                            backgroundColor: 'rgba(59, 130, 246, 0.85)',
-                            borderRadius: 4,
+                            backgroundColor: '#3b82f6',
+                            borderRadius: 3,
                             stack: 'base',
-                            barPercentage: 0.35,
-                            categoryPercentage: 0.8
+                            barPercentage: 0.4,
+                            categoryPercentage: 0.85
                         },
                         {
                             label: `${targetCurrency} Interest`,
                             data: hedgedInterest,
                             backgroundColor: 'rgba(6, 182, 212, 0.5)',
-                            borderRadius: 4,
+                            borderRadius: 3,
                             stack: 'hedged',
-                            barPercentage: 0.35,
-                            categoryPercentage: 0.8
+                            barPercentage: 0.4,
+                            categoryPercentage: 0.85
                         },
                         {
                             label: `${targetCurrency} Principal`,
                             data: hedgedPrincipal,
-                            backgroundColor: 'rgba(34, 197, 94, 0.85)',
-                            borderRadius: 4,
+                            backgroundColor: '#22c55e',
+                            borderRadius: 3,
                             stack: 'hedged',
-                            barPercentage: 0.35,
-                            categoryPercentage: 0.8
+                            barPercentage: 0.4,
+                            categoryPercentage: 0.85
                         }
                     ]
                 },
@@ -4574,23 +4607,20 @@
                             display: false
                         },
                         tooltip: {
-                            backgroundColor: 'rgba(17, 24, 39, 0.95)',
-                            titleColor: '#f3f4f6',
-                            bodyColor: '#d1d5db',
-                            borderColor: 'rgba(75, 85, 99, 0.5)',
+                            backgroundColor: '#1f2937',
+                            titleColor: '#f9fafb',
+                            bodyColor: '#e5e7eb',
+                            borderColor: '#374151',
                             borderWidth: 1,
                             padding: 12,
+                            cornerRadius: 6,
                             displayColors: true,
+                            boxPadding: 4,
                             callbacks: {
                                 label: function(context) {
                                     const value = context.raw;
                                     if (value === 0) return null;
-                                    const formatted = Math.abs(value) >= 1000000 
-                                        ? (value / 1000000).toFixed(2) + 'M'
-                                        : Math.abs(value) >= 1000 
-                                            ? (value / 1000).toFixed(1) + 'K'
-                                            : value.toFixed(0);
-                                    return `${context.dataset.label}: ${value < 0 ? '-' : ''}$${Math.abs(value) >= 1000000 ? (Math.abs(value) / 1000000).toFixed(2) + 'M' : Math.abs(value) >= 1000 ? (Math.abs(value) / 1000).toFixed(1) + 'K' : Math.abs(value).toFixed(0)}`;
+                                    return `${context.dataset.label}: $${formatValue(value)}`;
                                 }
                             }
                         }
@@ -4601,6 +4631,9 @@
                             grid: { 
                                 display: false
                             },
+                            border: {
+                                display: false
+                            },
                             ticks: { 
                                 color: '#9ca3af',
                                 font: { size: 11, weight: '500' }
@@ -4609,18 +4642,16 @@
                         y: {
                             stacked: true,
                             grid: { 
-                                color: 'rgba(75, 85, 99, 0.3)',
-                                drawBorder: false
+                                display: false
+                            },
+                            border: {
+                                display: false
                             },
                             ticks: { 
                                 color: '#9ca3af',
                                 font: { size: 10 },
                                 callback: function(value) {
-                                    if (value === 0) return '0';
-                                    const absVal = Math.abs(value);
-                                    if (absVal >= 1000000) return (value / 1000000).toFixed(1) + 'M';
-                                    if (absVal >= 1000) return (value / 1000).toFixed(0) + 'K';
-                                    return value;
+                                    return '$' + formatValue(value);
                                 }
                             }
                         }
