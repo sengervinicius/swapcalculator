@@ -4220,6 +4220,12 @@
             const result = calculatedResults[0];
             if (!result) return;
             
+            // Helper to safely set text content
+            const setText = (id, text) => {
+                const el = document.getElementById(id);
+                if (el) el.textContent = text;
+            };
+            
             const baseCurrency = document.getElementById('baseCurrency').value;
             const targetCurrency = result.ccy_target;
             const tenor = result.tenor_years;
@@ -4236,14 +4242,14 @@
             const hedgedCouponRate = result.hedged_return_pp / 100;
             
             // Update currency labels
-            document.getElementById('bondBaseCurrency').textContent = baseCurrency;
-            document.getElementById('bondTargetCurrency').textContent = targetCurrency;
+            setText('bondBaseCurrency', baseCurrency);
+            setText('bondTargetCurrency', targetCurrency);
             
             // Update chart titles
-            document.getElementById('cfHeaderBase').textContent = baseCurrency;
-            document.getElementById('cfHeaderTarget').textContent = `${targetCurrency} (Hedged)`;
-            document.getElementById('bondChartTitleBase').textContent = `${baseCurrency} Cash Flows`;
-            document.getElementById('bondChartTitleTarget').textContent = `${targetCurrency} Cash Flows (Hedged)`;
+            setText('cfHeaderBase', baseCurrency);
+            setText('cfHeaderTarget', `${targetCurrency} (Hedged)`);
+            setText('bondChartTitleBase', `${baseCurrency} Cash Flows`);
+            setText('bondChartTitleTarget', `${targetCurrency} Cash Flows (Hedged)`);
             
             // Generate cash flows based on FACE VALUE (coupons are on face, not purchase price)
             const baseCashFlows = generateBondCashFlows(faceValue, baseCouponRate, tenor, bondType, frequency);
@@ -4265,31 +4271,17 @@
             const formatPct = (num) => (num * 100).toFixed(2) + '%';
             
             // Update summary cards
-            document.getElementById('bondBaseYTM').textContent = formatPct(baseMetrics.ytm);
-            document.getElementById('bondBaseMOIC').textContent = baseMetrics.moic.toFixed(2) + 'x';
-            document.getElementById('bondBaseInvestment').textContent = formatCurrency(purchasePrice);
-            document.getElementById('bondBaseProceeds').textContent = formatCurrency(baseMetrics.totalCashReceived);
-            document.getElementById('bondBaseProfit').textContent = (baseMetrics.nominalProfit >= 0 ? '+' : '') + formatCurrency(baseMetrics.nominalProfit);
+            setText('bondBaseYTM', formatPct(baseMetrics.ytm));
+            setText('bondBaseMOIC', baseMetrics.moic.toFixed(2) + 'x');
+            setText('bondBaseInvestment', formatCurrency(purchasePrice));
+            setText('bondBaseProceeds', formatCurrency(baseMetrics.totalCashReceived));
+            setText('bondBaseProfit', (baseMetrics.nominalProfit >= 0 ? '+' : '') + formatCurrency(baseMetrics.nominalProfit));
             
-            document.getElementById('bondTargetYTM').textContent = formatPct(hedgedMetrics.ytm);
-            document.getElementById('bondTargetMOIC').textContent = hedgedMetrics.moic.toFixed(2) + 'x';
-            document.getElementById('bondTargetInvestment').textContent = formatCurrency(purchasePrice);
-            document.getElementById('bondTargetProceeds').textContent = formatCurrency(hedgedMetrics.totalCashReceived);
-            document.getElementById('bondTargetProfit').textContent = (hedgedMetrics.nominalProfit >= 0 ? '+' : '') + formatCurrency(hedgedMetrics.nominalProfit);
-            
-            // Update advantage banner
-            const profitDiff = hedgedMetrics.nominalProfit - baseMetrics.nominalProfit;
-            const ytmDiff = hedgedMetrics.ytm - baseMetrics.ytm;
-            const banner = document.getElementById('bondAdvantageBanner');
-            
-            document.getElementById('bondAdvantageValue').textContent = (profitDiff >= 0 ? '+' : '') + formatCurrency(profitDiff);
-            document.getElementById('bondAdvantagePct').textContent = `(${ytmDiff >= 0 ? '+' : ''}${(ytmDiff * 100).toFixed(2)}% YTM)`;
-            
-            if (profitDiff >= 0) {
-                banner.classList.remove('negative');
-            } else {
-                banner.classList.add('negative');
-            }
+            setText('bondTargetYTM', formatPct(hedgedMetrics.ytm));
+            setText('bondTargetMOIC', hedgedMetrics.moic.toFixed(2) + 'x');
+            setText('bondTargetInvestment', formatCurrency(purchasePrice));
+            setText('bondTargetProceeds', formatCurrency(hedgedMetrics.totalCashReceived));
+            setText('bondTargetProfit', (hedgedMetrics.nominalProfit >= 0 ? '+' : '') + formatCurrency(hedgedMetrics.nominalProfit));
             
             // Build charts
             renderBondChartsSimple(baseCashFlows, hedgedCashFlows, baseCurrency, targetCurrency);
