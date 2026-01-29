@@ -3986,7 +3986,11 @@
             });
         }
         
-        // Bond Simulator
+        // ============================================
+        // BOND SIMULATOR - Proper Financial Math
+        // Based on bond valuation theory (Damodaran ch33)
+        // ============================================
+        
         function updateBondSimulator() {
             const result = calculatedResults[0];
             if (!result) return;
@@ -3998,10 +4002,9 @@
             const bondType = document.getElementById('bondType').value;
             const frequency = parseInt(document.getElementById('bondFrequency').value) || 2;
             
-            // Base return (in base currency)
-            const baseReturnRate = result.all_in_base_pp / 100; // Convert to decimal
-            // Hedged return (what you get in target currency terms, converted back)
-            const hedgedReturnRate = result.hedged_return_pp / 100;
+            // Annual coupon rates (these are the yields we calculated)
+            const baseCouponRate = result.all_in_base_pp / 100;      // e.g., 0.0435 for 4.35%
+            const hedgedCouponRate = result.hedged_return_pp / 100;  // e.g., 0.14 for 14%
             
             // Currency flags
             const flags = {
@@ -4011,92 +4014,89 @@
             };
             
             // Update currency labels
-            document.getElementById('bondBaseCurrency').textContent = `${baseCurrency} (Base)`;
-            document.getElementById('bondTargetCurrency').textContent = `${targetCurrency} (Hedged)`;
+            document.getElementById('bondBaseCurrency').textContent = `${baseCurrency} Bond`;
+            document.getElementById('bondTargetCurrency').textContent = `${targetCurrency} Bond (Hedged)`;
             document.getElementById('bondBaseFlag').textContent = flags[baseCurrency] || '💵';
             document.getElementById('bondTargetFlag').textContent = flags[targetCurrency] || '🌍';
             document.getElementById('cfHeaderBase').textContent = baseCurrency;
             document.getElementById('cfHeaderTarget').textContent = `${targetCurrency} (Hedged)`;
             
-            // Calculate cash flows
-            const baseCashFlows = calculateBondCashFlows(faceValue, baseReturnRate, tenor, bondType, frequency);
-            const targetCashFlows = calculateBondCashFlows(faceValue, hedgedReturnRate, tenor, bondType, frequency);
+            // Generate cash flows for both scenarios
+            // Investment: -faceValue at t=0
+            // Returns: periodic payments based on bond type
+            const baseCashFlows = generateBondCashFlows(faceValue, baseCouponRate, tenor, bondType, frequency);
+            const hedgedCashFlows = generateBondCashFlows(faceValue, hedgedCouponRate, tenor, bondType, frequency);
             
-            // Calculate totals
-            const baseTotalCash = baseCashFlows.reduce((sum, cf) => sum + cf.payment, 0);
-            const targetTotalCash = targetCashFlows.reduce((sum, cf) => sum + cf.payment, 0);
+            // Calculate key metrics
+            const baseMetrics = calculateBondMetrics(faceValue, baseCashFlows, baseCouponRate, frequency);
+            const hedgedMetrics = calculateBondMetrics(faceValue, hedgedCashFlows, hedgedCouponRate, frequency);
             
-            const baseProfit = baseTotalCash - faceValue;
-            const targetProfit = targetTotalCash - faceValue;
-            
-            const baseMOIC = baseTotalCash / faceValue;
-            const targetMOIC = targetTotalCash / faceValue;
-            
-            // IRR is the input rate for bullet/zero, need to calculate for amortizing
-            const baseIRR = baseReturnRate * 100;
-            const targetIRR = hedgedReturnRate * 100;
-            
-            // Format numbers
+            // Format helpers
             const formatCurrency = (num) => {
-                if (Math.abs(num) >= 1000000) {
-                    return (num / 1000000).toFixed(2) + 'M';
-                } else if (Math.abs(num) >= 1000) {
-                    return (num / 1000).toFixed(1) + 'K';
-                }
+                if (Math.abs(num) >= 1000000) return (num / 1000000).toFixed(2) + 'M';
+                if (Math.abs(num) >= 1000) return (num / 1000).toFixed(1) + 'K';
                 return num.toFixed(0);
             };
             
-            // Update Base card
-            document.getElementById('bondBaseTotalCash').textContent = formatCurrency(baseTotalCash);
-            document.getElementById('bondBaseMOIC').textContent = baseMOIC.toFixed(3) + 'x';
-            document.getElementById('bondBaseIRR').textContent = baseIRR.toFixed(2) + '%';
-            document.getElementById('bondBaseProfit').textContent = formatCurrency(baseProfit);
+            const formatPct = (num) => num.toFixed(2) + '%';
             
-            // Update Target card
-            document.getElementById('bondTargetTotalCash').textContent = formatCurrency(targetTotalCash);
-            document.getElementById('bondTargetMOIC').textContent = targetMOIC.toFixed(3) + 'x';
-            document.getElementById('bondTargetIRR').textContent = targetIRR.toFixed(2) + '%';
-            document.getElementById('bondTargetProfit').textContent = formatCurrency(targetProfit);
+            // Update Base card
+            document.getElementById('bondBaseTotalCash').textContent = formatCurrency(baseMetrics.totalCashReceived);
+            document.getElementById('bondBaseMOIC').textContent = baseMetrics.moic.toFixed(3) + 'x';
+            document.getElementById('bondBaseIRR').textContent = formatPct(baseMetrics.irr * 100);
+            document.getElementById('bondBaseProfit').textContent = formatCurrency(baseMetrics.nominalProfit);
+            
+            // Update Target (Hedged) card
+            document.getElementById('bondTargetTotalCash').textContent = formatCurrency(hedgedMetrics.totalCashReceived);
+            document.getElementById('bondTargetMOIC').textContent = hedgedMetrics.moic.toFixed(3) + 'x';
+            document.getElementById('bondTargetIRR').textContent = formatPct(hedgedMetrics.irr * 100);
+            document.getElementById('bondTargetProfit').textContent = formatCurrency(hedgedMetrics.nominalProfit);
             
             // Update comparison summary
             document.getElementById('bondComparisonSummary').style.display = 'block';
-            document.getElementById('bondCompareInvestBase').textContent = formatCurrency(faceValue) + ' ' + baseCurrency;
-            document.getElementById('bondCompareInvestTarget').textContent = formatCurrency(faceValue) + ' ' + baseCurrency;
-            document.getElementById('bondCompareCashBase').textContent = formatCurrency(baseTotalCash) + ' ' + baseCurrency;
-            document.getElementById('bondCompareCashTarget').textContent = formatCurrency(targetTotalCash) + ' ' + baseCurrency;
-            document.getElementById('bondCompareProfitBase').textContent = formatCurrency(baseProfit) + ' ' + baseCurrency;
-            document.getElementById('bondCompareProfitTarget').textContent = formatCurrency(targetProfit) + ' ' + baseCurrency;
-            document.getElementById('bondCompareMOICBase').textContent = baseMOIC.toFixed(3) + 'x';
-            document.getElementById('bondCompareMOICTarget').textContent = targetMOIC.toFixed(3) + 'x';
+            document.getElementById('bondCompareInvestBase').textContent = formatCurrency(faceValue);
+            document.getElementById('bondCompareInvestTarget').textContent = formatCurrency(faceValue);
+            document.getElementById('bondCompareCashBase').textContent = formatCurrency(baseMetrics.totalCashReceived);
+            document.getElementById('bondCompareCashTarget').textContent = formatCurrency(hedgedMetrics.totalCashReceived);
+            document.getElementById('bondCompareProfitBase').textContent = formatCurrency(baseMetrics.nominalProfit);
+            document.getElementById('bondCompareProfitTarget').textContent = formatCurrency(hedgedMetrics.nominalProfit);
+            document.getElementById('bondCompareMOICBase').textContent = baseMetrics.moic.toFixed(3) + 'x';
+            document.getElementById('bondCompareMOICTarget').textContent = hedgedMetrics.moic.toFixed(3) + 'x';
             
-            const extraProfit = targetProfit - baseProfit;
+            const extraProfit = hedgedMetrics.nominalProfit - baseMetrics.nominalProfit;
             const extraProfitEl = document.getElementById('bondExtraProfit');
-            extraProfitEl.textContent = (extraProfit >= 0 ? '+' : '') + formatCurrency(extraProfit) + ' ' + baseCurrency;
+            extraProfitEl.textContent = (extraProfit >= 0 ? '+' : '') + formatCurrency(extraProfit);
             extraProfitEl.style.color = extraProfit >= 0 ? 'var(--green)' : 'var(--red)';
             
             // Build cash flow table
-            buildCashFlowTable(baseCashFlows, targetCashFlows, baseCurrency, targetCurrency);
+            buildCashFlowTable(baseCashFlows, hedgedCashFlows, baseCurrency, targetCurrency, faceValue);
         }
         
-        function calculateBondCashFlows(faceValue, annualRate, tenorYears, bondType, frequency) {
+        /**
+         * Generate cash flows for a bond
+         * Returns array of {period, year, interest, principal, payment, balance}
+         */
+        function generateBondCashFlows(faceValue, annualCouponRate, tenorYears, bondType, frequency) {
             const cashFlows = [];
             const periodsPerYear = frequency;
             const totalPeriods = Math.round(tenorYears * periodsPerYear);
-            const periodRate = annualRate / periodsPerYear;
+            const periodRate = annualCouponRate / periodsPerYear;
             
             if (bondType === 'zero') {
-                // Zero coupon: no payments until maturity
-                const maturityValue = faceValue * Math.pow(1 + annualRate, tenorYears);
+                // Zero coupon: single payment at maturity
+                // For zero coupon, the "coupon rate" is the yield
+                // FV = PV × (1 + r)^n, so maturity value = faceValue × (1 + rate)^years
+                const maturityValue = faceValue * Math.pow(1 + annualCouponRate, tenorYears);
                 cashFlows.push({
                     period: totalPeriods,
                     year: tenorYears,
-                    interest: maturityValue - faceValue,
+                    interest: maturityValue - faceValue, // Accreted interest
                     principal: faceValue,
                     payment: maturityValue,
                     balance: 0
                 });
             } else if (bondType === 'bullet') {
-                // Bullet: interest payments + principal at end
+                // Bullet bond: periodic interest payments + full principal at maturity
                 const couponPayment = faceValue * periodRate;
                 
                 for (let i = 1; i <= totalPeriods; i++) {
@@ -4112,67 +4112,213 @@
                     });
                 }
             } else if (bondType === 'amortizing') {
-                // Fully amortizing: PMT formula
-                const pmt = faceValue * (periodRate * Math.pow(1 + periodRate, totalPeriods)) / 
-                           (Math.pow(1 + periodRate, totalPeriods) - 1);
-                
-                let balance = faceValue;
-                for (let i = 1; i <= totalPeriods; i++) {
-                    const interestPayment = balance * periodRate;
-                    const principalPayment = pmt - interestPayment;
-                    balance = Math.max(0, balance - principalPayment);
+                // Fully amortizing: equal total payments (like a mortgage)
+                // PMT = PV × [r(1+r)^n] / [(1+r)^n - 1]
+                if (periodRate === 0) {
+                    // Edge case: 0% rate
+                    const pmt = faceValue / totalPeriods;
+                    let balance = faceValue;
+                    for (let i = 1; i <= totalPeriods; i++) {
+                        balance -= pmt;
+                        cashFlows.push({
+                            period: i,
+                            year: i / periodsPerYear,
+                            interest: 0,
+                            principal: pmt,
+                            payment: pmt,
+                            balance: Math.max(0, balance)
+                        });
+                    }
+                } else {
+                    const pmt = faceValue * (periodRate * Math.pow(1 + periodRate, totalPeriods)) / 
+                               (Math.pow(1 + periodRate, totalPeriods) - 1);
                     
-                    cashFlows.push({
-                        period: i,
-                        year: i / periodsPerYear,
-                        interest: interestPayment,
-                        principal: principalPayment,
-                        payment: pmt,
-                        balance: balance
-                    });
+                    let balance = faceValue;
+                    for (let i = 1; i <= totalPeriods; i++) {
+                        const interestPayment = balance * periodRate;
+                        const principalPayment = pmt - interestPayment;
+                        balance = Math.max(0, balance - principalPayment);
+                        
+                        cashFlows.push({
+                            period: i,
+                            year: i / periodsPerYear,
+                            interest: interestPayment,
+                            principal: principalPayment,
+                            payment: pmt,
+                            balance: balance
+                        });
+                    }
                 }
             }
             
             return cashFlows;
         }
         
-        function buildCashFlowTable(baseCashFlows, targetCashFlows, baseCurrency, targetCurrency) {
+        /**
+         * Calculate bond metrics from cash flows
+         * IRR is calculated using Newton-Raphson method
+         */
+        function calculateBondMetrics(investment, cashFlows, couponRate, frequency) {
+            // Total nominal cash received (not discounted)
+            const totalCashReceived = cashFlows.reduce((sum, cf) => sum + cf.payment, 0);
+            
+            // Nominal profit
+            const nominalProfit = totalCashReceived - investment;
+            
+            // MOIC - Multiple on Invested Capital
+            const moic = totalCashReceived / investment;
+            
+            // Calculate IRR using Newton-Raphson
+            // NPV = -Investment + Σ(CF_t / (1+r)^t) = 0
+            // For a bond bought at par with coupon rate c, IRR should equal c
+            const irr = calculateIRR(investment, cashFlows, frequency);
+            
+            // Duration (Macaulay) - weighted average time to cash flows
+            // Duration = Σ(t × PV(CF_t)) / Price
+            const duration = calculateMacaulayDuration(cashFlows, irr, frequency);
+            
+            return {
+                totalCashReceived,
+                nominalProfit,
+                moic,
+                irr,
+                duration
+            };
+        }
+        
+        /**
+         * Calculate IRR using Newton-Raphson method
+         * Solves for r where: -Investment + Σ(CF_t / (1+r)^t) = 0
+         */
+        function calculateIRR(investment, cashFlows, frequency) {
+            // Convert cash flows to array with time in years
+            const cfs = cashFlows.map(cf => ({ amount: cf.payment, year: cf.year }));
+            
+            // NPV function
+            const npv = (rate) => {
+                let pv = -investment; // Initial outflow
+                for (const cf of cfs) {
+                    pv += cf.amount / Math.pow(1 + rate, cf.year);
+                }
+                return pv;
+            };
+            
+            // NPV derivative with respect to rate
+            const npvDerivative = (rate) => {
+                let dpv = 0;
+                for (const cf of cfs) {
+                    dpv -= cf.year * cf.amount / Math.pow(1 + rate, cf.year + 1);
+                }
+                return dpv;
+            };
+            
+            // Newton-Raphson iteration
+            let rate = 0.10; // Initial guess
+            const maxIterations = 100;
+            const tolerance = 1e-10;
+            
+            for (let i = 0; i < maxIterations; i++) {
+                const f = npv(rate);
+                const fPrime = npvDerivative(rate);
+                
+                if (Math.abs(fPrime) < 1e-15) break; // Avoid division by zero
+                
+                const newRate = rate - f / fPrime;
+                
+                if (Math.abs(newRate - rate) < tolerance) {
+                    return newRate;
+                }
+                
+                rate = newRate;
+                
+                // Bound the rate to avoid divergence
+                if (rate < -0.99) rate = -0.99;
+                if (rate > 10) rate = 10;
+            }
+            
+            return rate;
+        }
+        
+        /**
+         * Calculate Macaulay Duration
+         * Duration = Σ(t × PV(CF_t)) / Bond Price
+         */
+        function calculateMacaulayDuration(cashFlows, discountRate, frequency) {
+            let weightedTime = 0;
+            let totalPV = 0;
+            
+            for (const cf of cashFlows) {
+                const pv = cf.payment / Math.pow(1 + discountRate, cf.year);
+                weightedTime += cf.year * pv;
+                totalPV += pv;
+            }
+            
+            return totalPV > 0 ? weightedTime / totalPV : 0;
+        }
+        
+        /**
+         * Build the cash flow comparison table
+         */
+        function buildCashFlowTable(baseCashFlows, hedgedCashFlows, baseCurrency, targetCurrency, investment) {
             const tbody = document.getElementById('bondCashflowBody');
             tbody.innerHTML = '';
             
-            const maxPeriods = Math.max(baseCashFlows.length, targetCashFlows.length);
+            const maxPeriods = Math.max(baseCashFlows.length, hedgedCashFlows.length);
             
-            let baseCumulative = 0;
-            let targetCumulative = 0;
+            const formatNum = (n) => {
+                if (n >= 1000000) return (n/1000000).toFixed(2) + 'M';
+                if (n >= 1000) return (n/1000).toFixed(1) + 'K';
+                return n.toFixed(0);
+            };
             
-            const formatNum = (n) => n >= 1000 ? (n/1000).toFixed(1) + 'K' : n.toFixed(0);
+            // Add initial investment row
+            const investRow = document.createElement('tr');
+            investRow.innerHTML = `
+                <td style="color: var(--text-muted);">T=0 (Investment)</td>
+                <td style="color: var(--red);">-${formatNum(investment)}</td>
+                <td style="color: var(--red);">-${formatNum(investment)}</td>
+            `;
+            tbody.appendChild(investRow);
             
+            // Add each period
             for (let i = 0; i < maxPeriods; i++) {
-                const baseCF = baseCashFlows[i] || { payment: 0, year: 0 };
-                const targetCF = targetCashFlows[i] || { payment: 0, year: 0 };
-                
-                baseCumulative += baseCF.payment;
-                targetCumulative += targetCF.payment;
+                const baseCF = baseCashFlows[i];
+                const hedgedCF = hedgedCashFlows[i];
                 
                 const row = document.createElement('tr');
-                const yearLabel = baseCF.year ? `Year ${baseCF.year.toFixed(1)}` : `Period ${i + 1}`;
+                const yearLabel = baseCF ? `Year ${baseCF.year.toFixed(baseCF.year % 1 === 0 ? 0 : 1)}` : `Period ${i + 1}`;
                 
                 row.innerHTML = `
                     <td>${yearLabel}</td>
-                    <td style="color: var(--blue);">${formatNum(baseCF.payment)}</td>
-                    <td style="color: var(--green);">${formatNum(targetCF.payment)}</td>
+                    <td style="color: var(--blue);">+${baseCF ? formatNum(baseCF.payment) : '0'}</td>
+                    <td style="color: var(--green);">+${hedgedCF ? formatNum(hedgedCF.payment) : '0'}</td>
                 `;
                 tbody.appendChild(row);
             }
             
             // Add total row
+            const baseTotalCash = baseCashFlows.reduce((sum, cf) => sum + cf.payment, 0);
+            const hedgedTotalCash = hedgedCashFlows.reduce((sum, cf) => sum + cf.payment, 0);
+            
             const totalRow = document.createElement('tr');
             totalRow.innerHTML = `
-                <td><strong>TOTAL</strong></td>
-                <td>${formatNum(baseCumulative)}</td>
-                <td>${formatNum(targetCumulative)}</td>
+                <td><strong>Total Cash In</strong></td>
+                <td><strong>${formatNum(baseTotalCash)}</strong></td>
+                <td><strong>${formatNum(hedgedTotalCash)}</strong></td>
             `;
             tbody.appendChild(totalRow);
+            
+            // Add net profit row
+            const profitRow = document.createElement('tr');
+            profitRow.style.background = 'var(--bg-tertiary)';
+            const baseProfit = baseTotalCash - investment;
+            const hedgedProfit = hedgedTotalCash - investment;
+            profitRow.innerHTML = `
+                <td><strong>Net Profit</strong></td>
+                <td style="color: ${baseProfit >= 0 ? 'var(--blue)' : 'var(--red)'}"><strong>${baseProfit >= 0 ? '+' : ''}${formatNum(baseProfit)}</strong></td>
+                <td style="color: ${hedgedProfit >= 0 ? 'var(--green)' : 'var(--red)'}"><strong>${hedgedProfit >= 0 ? '+' : ''}${formatNum(hedgedProfit)}</strong></td>
+            `;
+            tbody.appendChild(profitRow);
         }
         
         // Cash flow toggle
