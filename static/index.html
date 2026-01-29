@@ -2174,6 +2174,14 @@
             color: var(--text-primary);
         }
         
+        .bond-comparison-table tr.subtotal-row {
+            background: rgba(107, 114, 128, 0.1);
+        }
+        
+        .bond-comparison-table tr.subtotal-row td {
+            font-weight: 600;
+        }
+        
         /* Charts Section */
         .bond-charts-section {
             margin: 20px 0;
@@ -2858,10 +2866,15 @@
                                                     <td class="col-base" id="bondComparePrincipalBase">—</td>
                                                     <td class="col-target" id="bondComparePrincipalTarget">—</td>
                                                 </tr>
-                                                <tr>
-                                                    <td>Total Proceeds</td>
+                                                <tr class="subtotal-row">
+                                                    <td><strong>Total Proceeds</strong></td>
                                                     <td class="col-base" id="bondCompareCashBase">—</td>
                                                     <td class="col-target" id="bondCompareCashTarget">—</td>
+                                                </tr>
+                                                <tr class="highlight-row">
+                                                    <td><strong>Difference (Hedged − Base)</strong></td>
+                                                    <td class="col-base"></td>
+                                                    <td class="col-target" id="bondExtraProfit">—</td>
                                                 </tr>
                                                 <tr>
                                                     <td>Net Profit / (Loss)</td>
@@ -2872,11 +2885,6 @@
                                                     <td>MOIC</td>
                                                     <td class="col-base" id="bondCompareMOICBase">—</td>
                                                     <td class="col-target" id="bondCompareMOICTarget">—</td>
-                                                </tr>
-                                                <tr class="highlight-row">
-                                                    <td>Additional Profit / (Loss) from Hedging</td>
-                                                    <td class="col-base">—</td>
-                                                    <td class="col-target" id="bondExtraProfit">—</td>
                                                 </tr>
                                             </tbody>
                                         </table>
@@ -2889,7 +2897,6 @@
                                             <div class="chart-legend">
                                                 <span class="legend-item"><span class="legend-color interest"></span> Interest</span>
                                                 <span class="legend-item"><span class="legend-color principal"></span> Principal</span>
-                                                <span class="legend-item"><span class="legend-color hedge"></span> Hedge Cost</span>
                                             </div>
                                         </div>
                                         <div class="bond-charts-grid">
@@ -2918,7 +2925,7 @@
                                                     <tr>
                                                         <th>Period</th>
                                                         <th colspan="3" id="cfHeaderBase" class="col-group-base">USD</th>
-                                                        <th colspan="4" id="cfHeaderTarget" class="col-group-target">BRL (Hedged)</th>
+                                                        <th colspan="3" id="cfHeaderTarget" class="col-group-target">BRL (Hedged)</th>
                                                     </tr>
                                                     <tr class="subheader">
                                                         <th></th>
@@ -2927,8 +2934,7 @@
                                                         <th>Total</th>
                                                         <th>Interest</th>
                                                         <th>Principal</th>
-                                                        <th>Hedge Cost</th>
-                                                        <th>Net CF</th>
+                                                        <th>Total</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody id="bondCashflowBody">
@@ -4173,16 +4179,12 @@
             const bondType = document.getElementById('bondType').value;
             const frequency = parseInt(document.getElementById('bondFrequency').value) || 2;
             
-            // Get the hedge cost (per annum basis)
+            // Get the hedge cost (per annum basis) - for display purposes only
             const hedgeCostBps = result.hedging_cost_bps || 0;
-            const hedgeCostPctPerAnnum = hedgeCostBps / 100; // Convert bps to percentage points
             
-            // Coupon rates (annualized)
-            const baseCouponRate = result.all_in_base_pp / 100;
-            // usd_equiv_pp is the target return BEFORE hedge cost
-            const targetCouponRateGross = result.usd_equiv_pp / 100;
-            // hedged_return_pp is AFTER hedge cost (what we actually use)
-            const hedgedCouponRate = result.hedged_return_pp / 100;
+            // Coupon rates (annualized) - convert percentage points to decimal
+            const baseCouponRate = result.all_in_base_pp / 100;      // e.g., 26.5% -> 0.265
+            const hedgedCouponRate = result.hedged_return_pp / 100;  // e.g., 14.64% -> 0.1464
             
             // Update currency labels in cards
             document.getElementById('bondBaseCurrency').textContent = baseCurrency;
@@ -4198,19 +4200,14 @@
             document.getElementById('bondChartTitleBase').textContent = `${baseCurrency} Bond Cash Flows`;
             document.getElementById('bondChartTitleTarget').textContent = `${targetCurrency} Bond Cash Flows (Hedged)`;
             
-            // Generate cash flows
+            // Generate cash flows for BOTH scenarios using respective coupon rates
+            // The hedgedCouponRate already incorporates the hedge cost/benefit
             const baseCashFlows = generateBondCashFlows(faceValue, baseCouponRate, tenor, bondType, frequency);
-            const targetCashFlows = generateBondCashFlows(faceValue, hedgedCouponRate, tenor, bondType, frequency);
-            
-            // For hedged bond, we need to track hedge cost separately
-            // The hedge cost is applied per period on the outstanding notional
-            const hedgedCashFlowsWithCost = generateHedgedCashFlows(
-                faceValue, targetCouponRateGross, hedgeCostPctPerAnnum, tenor, bondType, frequency
-            );
+            const hedgedCashFlows = generateBondCashFlows(faceValue, hedgedCouponRate, tenor, bondType, frequency);
             
             // Calculate metrics
             const baseMetrics = calculateBondMetrics(faceValue, baseCashFlows, baseCouponRate, frequency);
-            const hedgedMetrics = calculateBondMetrics(faceValue, hedgedCashFlowsWithCost.netFlows, hedgedCouponRate, frequency);
+            const hedgedMetrics = calculateBondMetrics(faceValue, hedgedCashFlows, hedgedCouponRate, frequency);
             
             // Format helpers
             const formatCurrency = (num) => {
@@ -4236,16 +4233,15 @@
             // Calculate totals for comparison table
             const baseTotalInterest = baseCashFlows.reduce((sum, cf) => sum + cf.interest, 0);
             const baseTotalPrincipal = baseCashFlows.reduce((sum, cf) => sum + cf.principal, 0);
-            const hedgedTotalInterest = hedgedCashFlowsWithCost.grossFlows.reduce((sum, cf) => sum + cf.interest, 0);
-            const hedgedTotalPrincipal = hedgedCashFlowsWithCost.grossFlows.reduce((sum, cf) => sum + cf.principal, 0);
-            const totalHedgeCost = hedgedCashFlowsWithCost.totalHedgeCost;
+            const hedgedTotalInterest = hedgedCashFlows.reduce((sum, cf) => sum + cf.interest, 0);
+            const hedgedTotalPrincipal = hedgedCashFlows.reduce((sum, cf) => sum + cf.principal, 0);
             
             // Update comparison table
             document.getElementById('bondComparisonSummary').style.display = 'block';
             document.getElementById('bondCompareInvestBase').textContent = formatCurrency(faceValue);
             document.getElementById('bondCompareInvestTarget').textContent = formatCurrency(faceValue);
             document.getElementById('bondCompareInterestBase').textContent = formatCurrency(baseTotalInterest);
-            document.getElementById('bondCompareInterestTarget').textContent = formatCurrency(hedgedTotalInterest - Math.abs(totalHedgeCost));
+            document.getElementById('bondCompareInterestTarget').textContent = formatCurrency(hedgedTotalInterest);
             document.getElementById('bondComparePrincipalBase').textContent = formatCurrency(baseTotalPrincipal);
             document.getElementById('bondComparePrincipalTarget').textContent = formatCurrency(hedgedTotalPrincipal);
             document.getElementById('bondCompareCashBase').textContent = formatCurrency(baseMetrics.totalCashReceived);
@@ -4255,16 +4251,17 @@
             document.getElementById('bondCompareMOICBase').textContent = baseMetrics.moic.toFixed(3) + 'x';
             document.getElementById('bondCompareMOICTarget').textContent = hedgedMetrics.moic.toFixed(3) + 'x';
             
-            const extraProfit = hedgedMetrics.nominalProfit - baseMetrics.nominalProfit;
+            // Difference calculation (hedged vs base)
+            const profitDifference = hedgedMetrics.nominalProfit - baseMetrics.nominalProfit;
             const extraProfitEl = document.getElementById('bondExtraProfit');
-            extraProfitEl.textContent = (extraProfit >= 0 ? '+' : '') + formatCurrency(extraProfit);
-            extraProfitEl.style.color = extraProfit >= 0 ? 'var(--green)' : 'var(--red)';
+            extraProfitEl.textContent = (profitDifference >= 0 ? '+' : '') + formatCurrency(profitDifference);
+            extraProfitEl.style.color = profitDifference >= 0 ? 'var(--green)' : 'var(--red)';
             
-            // Build charts
-            renderBondCharts(baseCashFlows, hedgedCashFlowsWithCost, baseCurrency, targetCurrency);
+            // Build charts - simplified version
+            renderBondChartsSimple(baseCashFlows, hedgedCashFlows, baseCurrency, targetCurrency);
             
-            // Build detailed amortization table
-            buildAmortizationTable(baseCashFlows, hedgedCashFlowsWithCost, baseCurrency, targetCurrency, faceValue);
+            // Build detailed amortization table - simplified version
+            buildAmortizationTableSimple(baseCashFlows, hedgedCashFlows, baseCurrency, targetCurrency, faceValue);
             
             // Store data for export
             bondDataForExport = {
@@ -4278,7 +4275,7 @@
                 hedgedCouponRate,
                 hedgeCostBps,
                 baseCashFlows,
-                hedgedCashFlowsWithCost,
+                hedgedCashFlows,
                 baseMetrics,
                 hedgedMetrics
             };
@@ -4359,46 +4356,6 @@
         }
         
         /**
-         * Generate hedged cash flows with explicit hedge cost tracking
-         * Hedge cost is applied PER PERIOD on outstanding notional (annualized rate / frequency)
-         */
-        function generateHedgedCashFlows(faceValue, grossCouponRate, hedgeCostPctPerAnnum, tenorYears, bondType, frequency) {
-            const grossFlows = generateBondCashFlows(faceValue, grossCouponRate, tenorYears, bondType, frequency);
-            const periodsPerYear = frequency;
-            const periodHedgeCost = hedgeCostPctPerAnnum / periodsPerYear;
-            
-            let totalHedgeCost = 0;
-            const netFlows = [];
-            
-            // For each period, calculate hedge cost on outstanding notional
-            let outstandingNotional = faceValue;
-            
-            for (let i = 0; i < grossFlows.length; i++) {
-                const gross = grossFlows[i];
-                
-                // Hedge cost for this period (applied to notional at start of period)
-                // Positive hedgeCost means you RECEIVE, negative means you PAY
-                const periodCost = outstandingNotional * periodHedgeCost;
-                totalHedgeCost += periodCost;
-                
-                // Update outstanding notional after principal payment
-                outstandingNotional -= gross.principal;
-                
-                netFlows.push({
-                    period: gross.period,
-                    year: gross.year,
-                    interest: gross.interest,
-                    principal: gross.principal,
-                    hedgeCost: periodCost, // Can be positive (receive) or negative (pay)
-                    payment: gross.interest + gross.principal + periodCost,
-                    balance: gross.balance
-                });
-            }
-            
-            return { grossFlows, netFlows, totalHedgeCost };
-        }
-        
-        /**
          * Calculate bond metrics from cash flows
          */
         function calculateBondMetrics(investment, cashFlows, couponRate, frequency) {
@@ -4457,9 +4414,9 @@
         }
         
         /**
-         * Render stacked bar charts for cash flows
+         * Render stacked bar charts for cash flows - SIMPLIFIED VERSION
          */
-        function renderBondCharts(baseCashFlows, hedgedData, baseCurrency, targetCurrency) {
+        function renderBondChartsSimple(baseCashFlows, hedgedCashFlows, baseCurrency, targetCurrency) {
             const ctxBase = document.getElementById('bondChartBase');
             const ctxTarget = document.getElementById('bondChartTarget');
             
@@ -4470,15 +4427,14 @@
             if (bondChartTarget) bondChartTarget.destroy();
             
             // Prepare data for base currency chart
-            const baseLabels = baseCashFlows.map(cf => `Y${cf.year.toFixed(1)}`);
+            const baseLabels = baseCashFlows.map(cf => `Y${cf.year.toFixed(cf.year % 1 === 0 ? 0 : 1)}`);
             const baseInterest = baseCashFlows.map(cf => cf.interest);
             const basePrincipal = baseCashFlows.map(cf => cf.principal);
             
             // Prepare data for hedged chart
-            const hedgedLabels = hedgedData.netFlows.map(cf => `Y${cf.year.toFixed(1)}`);
-            const hedgedInterest = hedgedData.netFlows.map(cf => cf.interest);
-            const hedgedPrincipal = hedgedData.netFlows.map(cf => cf.principal);
-            const hedgedHedgeCost = hedgedData.netFlows.map(cf => cf.hedgeCost);
+            const hedgedLabels = hedgedCashFlows.map(cf => `Y${cf.year.toFixed(cf.year % 1 === 0 ? 0 : 1)}`);
+            const hedgedInterest = hedgedCashFlows.map(cf => cf.interest);
+            const hedgedPrincipal = hedgedCashFlows.map(cf => cf.principal);
             
             const chartOptions = {
                 responsive: true,
@@ -4548,7 +4504,7 @@
                 options: chartOptions
             });
             
-            // Hedged chart with hedge cost
+            // Hedged chart
             bondChartTarget = new Chart(ctxTarget, {
                 type: 'bar',
                 data: {
@@ -4565,12 +4521,6 @@
                             data: hedgedPrincipal,
                             backgroundColor: 'rgba(34, 197, 94, 0.8)',
                             borderRadius: 2
-                        },
-                        {
-                            label: 'Hedge Cost/Benefit',
-                            data: hedgedHedgeCost,
-                            backgroundColor: hedgedHedgeCost.map(v => v >= 0 ? 'rgba(34, 197, 94, 0.5)' : 'rgba(239, 68, 68, 0.6)'),
-                            borderRadius: 2
                         }
                     ]
                 },
@@ -4579,9 +4529,9 @@
         }
         
         /**
-         * Build detailed amortization table
+         * Build detailed amortization table - SIMPLIFIED VERSION
          */
-        function buildAmortizationTable(baseCashFlows, hedgedData, baseCurrency, targetCurrency, investment) {
+        function buildAmortizationTableSimple(baseCashFlows, hedgedCashFlows, baseCurrency, targetCurrency, investment) {
             const tbody = document.getElementById('bondCashflowBody');
             tbody.innerHTML = '';
             
@@ -4592,38 +4542,33 @@
                 return n.toFixed(0);
             };
             
-            const maxPeriods = Math.max(baseCashFlows.length, hedgedData.netFlows.length);
+            const maxPeriods = Math.max(baseCashFlows.length, hedgedCashFlows.length);
             
             let baseTotalInt = 0, baseTotalPrin = 0, baseTotalPmt = 0;
-            let hedgedTotalInt = 0, hedgedTotalPrin = 0, hedgedTotalHedge = 0, hedgedTotalNet = 0;
+            let hedgedTotalInt = 0, hedgedTotalPrin = 0, hedgedTotalPmt = 0;
             
             for (let i = 0; i < maxPeriods; i++) {
                 const base = baseCashFlows[i] || { interest: 0, principal: 0, payment: 0, year: 0 };
-                const hedged = hedgedData.netFlows[i] || { interest: 0, principal: 0, hedgeCost: 0, payment: 0, year: 0 };
+                const hedged = hedgedCashFlows[i] || { interest: 0, principal: 0, payment: 0, year: 0 };
                 
                 baseTotalInt += base.interest;
                 baseTotalPrin += base.principal;
                 baseTotalPmt += base.payment;
                 hedgedTotalInt += hedged.interest;
                 hedgedTotalPrin += hedged.principal;
-                hedgedTotalHedge += hedged.hedgeCost;
-                hedgedTotalNet += hedged.payment;
+                hedgedTotalPmt += hedged.payment;
                 
                 const row = document.createElement('tr');
                 const yearLabel = base.year ? `Year ${base.year.toFixed(base.year % 1 === 0 ? 0 : 1)}` : `Period ${i + 1}`;
-                
-                const hedgeCostColor = hedged.hedgeCost >= 0 ? 'var(--green)' : 'var(--red)';
-                const hedgeCostSign = hedged.hedgeCost >= 0 ? '+' : '';
                 
                 row.innerHTML = `
                     <td>${yearLabel}</td>
                     <td style="color: var(--cyan);">${formatNum(base.interest)}</td>
                     <td style="color: var(--blue);">${formatNum(base.principal)}</td>
-                    <td style="color: var(--blue);">${formatNum(base.payment)}</td>
+                    <td style="color: var(--blue);"><strong>${formatNum(base.payment)}</strong></td>
                     <td style="color: var(--cyan);">${formatNum(hedged.interest)}</td>
                     <td style="color: var(--green);">${formatNum(hedged.principal)}</td>
-                    <td style="color: ${hedgeCostColor};">${hedgeCostSign}${formatNum(hedged.hedgeCost)}</td>
-                    <td style="color: var(--green);">${formatNum(hedged.payment)}</td>
+                    <td style="color: var(--green);"><strong>${formatNum(hedged.payment)}</strong></td>
                 `;
                 tbody.appendChild(row);
             }
@@ -4631,8 +4576,6 @@
             // Total row
             const totalRow = document.createElement('tr');
             totalRow.className = 'total-row';
-            const totalHedgeColor = hedgedTotalHedge >= 0 ? 'var(--green)' : 'var(--red)';
-            const totalHedgeSign = hedgedTotalHedge >= 0 ? '+' : '';
             
             totalRow.innerHTML = `
                 <td><strong>TOTAL</strong></td>
@@ -4641,8 +4584,7 @@
                 <td style="color: var(--blue);"><strong>${formatNum(baseTotalPmt)}</strong></td>
                 <td style="color: var(--cyan);"><strong>${formatNum(hedgedTotalInt)}</strong></td>
                 <td style="color: var(--green);"><strong>${formatNum(hedgedTotalPrin)}</strong></td>
-                <td style="color: ${totalHedgeColor};"><strong>${totalHedgeSign}${formatNum(hedgedTotalHedge)}</strong></td>
-                <td style="color: var(--green);"><strong>${formatNum(hedgedTotalNet)}</strong></td>
+                <td style="color: var(--green);"><strong>${formatNum(hedgedTotalPmt)}</strong></td>
             `;
             tbody.appendChild(totalRow);
         }
@@ -4679,15 +4621,15 @@
             csv += `IRR,${(d.baseMetrics.irr * 100).toFixed(4)}%,${(d.hedgedMetrics.irr * 100).toFixed(4)}%\n\n`;
             
             csv += 'AMORTIZATION SCHEDULE\n';
-            csv += `Period,Year,${d.baseCurrency} Interest,${d.baseCurrency} Principal,${d.baseCurrency} Total,${d.targetCurrency} Interest,${d.targetCurrency} Principal,Hedge Cost,${d.targetCurrency} Net CF\n`;
+            csv += `Period,Year,${d.baseCurrency} Interest,${d.baseCurrency} Principal,${d.baseCurrency} Total,${d.targetCurrency} Interest,${d.targetCurrency} Principal,${d.targetCurrency} Total\n`;
             
-            const maxLen = Math.max(d.baseCashFlows.length, d.hedgedCashFlowsWithCost.netFlows.length);
+            const maxLen = Math.max(d.baseCashFlows.length, d.hedgedCashFlows.length);
             for (let i = 0; i < maxLen; i++) {
                 const base = d.baseCashFlows[i] || { interest: 0, principal: 0, payment: 0, year: 0, period: i + 1 };
-                const hedged = d.hedgedCashFlowsWithCost.netFlows[i] || { interest: 0, principal: 0, hedgeCost: 0, payment: 0 };
+                const hedged = d.hedgedCashFlows[i] || { interest: 0, principal: 0, payment: 0 };
                 
                 csv += `${base.period},${base.year.toFixed(2)},${base.interest.toFixed(2)},${base.principal.toFixed(2)},${base.payment.toFixed(2)},`;
-                csv += `${hedged.interest.toFixed(2)},${hedged.principal.toFixed(2)},${hedged.hedgeCost.toFixed(2)},${hedged.payment.toFixed(2)}\n`;
+                csv += `${hedged.interest.toFixed(2)},${hedged.principal.toFixed(2)},${hedged.payment.toFixed(2)}\n`;
             }
             
             // Create and download file
