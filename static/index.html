@@ -4198,8 +4198,9 @@
                 
                 const price = parseFloat(this.dataset.price);
                 currentPricePercent = price;
-                document.getElementById('bondPriceCustom').value = price;
-                updateBondSimulator();
+                const customInput = document.getElementById('bondPriceCustom');
+                if (customInput) customInput.value = price;
+                if (calculatedResults.length > 0) updateBondSimulator();
             });
         });
         
@@ -4213,7 +4214,7 @@
                     b.classList.remove('active');
                 }
             });
-            updateBondSimulator();
+            if (calculatedResults.length > 0) updateBondSimulator();
         });
         
         function updateBondSimulator() {
@@ -4576,6 +4577,8 @@
          */
         function buildAmortizationTableSimple(baseCashFlows, hedgedCashFlows, baseCurrency, targetCurrency, investment) {
             const tbody = document.getElementById('bondCashflowBody');
+            if (!tbody) return;
+            
             tbody.innerHTML = '';
             
             const formatNum = (n) => {
